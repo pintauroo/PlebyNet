@@ -15,7 +15,7 @@ from src.config import ApplicationGraphType, DebugLevel, SchedulingAlgorithm, Ut
 from src.dataset_builder import generate_dataset
 # from kubernetes.kubernetes_scheduler import KubernetesScheduler
 
-# from Alibaba.dataset_loader import init_go_
+from src.dataset_loader import init_go_
 # from Alibaba.simulator import Simulator
 # from Alibaba.utils import print_fn, ALLOC_POLICY_DICT, PREEMPT_POLICY_DICT
 # from Alibaba.simulator import Simulator
@@ -70,14 +70,14 @@ if __name__ == '__main__':
     
     # ------ END FROM ALIBABA -------
     # generate common dataset and adjust it for plebi
-    # dataset = init_go_(NUM_JOBS, ARRIVAL_RATE, rep)
+    dataset = init_go_(NUM_JOBS, ARRIVAL_RATE, rep)
     # dataset = sorted(dataset, key=lambda x: x['submit_time'])
 
 
-    df = pd.read_csv('/home/andrea/projects/Plebiscitotest/static_dataset_max2000.csv')
+    # df = pd.read_csv('/home/andrea/Desktop/PlebiscitoN/traces/pai/df_dataset.csv')
 
     # Convert the DataFrame to a list of dictionaries
-    dataset = df.to_dict(orient='records')
+    # dataset = df.to_dict(orient='records')
     # dataset = dataset[:5]
     # df = pd.DataFrame(dataset)
 

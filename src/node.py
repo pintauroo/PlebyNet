@@ -992,7 +992,8 @@ class node:
             msg_to_resend = copy.deepcopy(tmp_local)
             #self.forward_to_neighbohors(tmp_local)
             for i in reset_ids:
-                _ = self.reset(i, tmp_local, bid_time - timedelta(days=1))
+                # _ = self.reset(i, tmp_local, bid_time - timedelta(days=1))
+                _ = self.reset(i, tmp_local, bid_time - 1)
                 msg_to_resend['auction_id'][i] = self.item['auction_id'][i]
                 msg_to_resend['bid'][i] = self.item['bid'][i]
                 msg_to_resend['timestamp'][i] = self.item['timestamp'][i]

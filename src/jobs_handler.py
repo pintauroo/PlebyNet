@@ -106,13 +106,7 @@ def dispatch_job(dataset: pd.DataFrame, queues, use_net_topology=False, split=Tr
                 increase = False
 
         data = message_data(
-                    job['job_id'],
-                    job['user'],
-                    job['num_gpu'],
-                    job['num_cpu'],
-                    job['duration'],
-                    job['bw'],
-                    job['gpu_type'],
+                    job,
                     deallocate=False,
                     split=split,
                     app_type=app_type,
@@ -159,28 +153,42 @@ def generate_application_graph(layer_number, app_type, bandwidth):
                 
     return graph        
 
-def message_data(job_id, user, num_gpu, num_cpu, duration, bandwidth, gpu_type, deallocate=False, split=True, app_type=ApplicationGraphType.LINEAR, speedup=0, increase=True):
+def message_data(job, deallocate=False, split=True, app_type=ApplicationGraphType.LINEAR, speedup=0, increase=True):
+
     
+    job_id = job['job_id']
+    user = job['user']
+    num_gpu = job['num_gpu']
+    num_cpu = job['num_cpu']
+    duration = job['duration']
+    bandwidth = job['bw']
+    gpu_type = job['gpu_type']
+
+    
+
     random.seed(job_id)
     np.random.seed(int(job_id))
     
-    layer_number = random.choice([3, 4, 5, 6])
-    if not split:
-        layer_number = 1
+    layer_number = job['num_inst']
+
+    # if not split:
+    #     layer_number = 1
 
     # use numpy to create an array of random numbers with length equal to the number of layers. As a constraint, the sum of the array must be equal to the number of GPUs
-    NN_gpu = np.random.dirichlet(np.ones(layer_number), size=1)[0] * num_gpu
-    NN_cpu = np.random.dirichlet(np.ones(layer_number), size=1)[0] * num_cpu
+    # NN_gpu = np.random.dirichlet(np.ones(layer_number), size=1)[0] * num_gpu
+    # NN_cpu = np.random.dirichlet(np.ones(layer_number), size=1)[0] * num_cpu
+
+    
     NN_data_size = generate_application_graph(layer_number, app_type, 1000000)
 
-    if split:
+    # if split:
+    max_layer_bid = layer_number
+    if max_layer_bid > layer_number:
         max_layer_bid = layer_number
-        if max_layer_bid > layer_number:
-            max_layer_bid = layer_number
-        min_layer_bid = 1
-    else:
-        max_layer_bid = layer_number
-        min_layer_bid = layer_number
+    min_layer_bid = 1
+    # else:
+        # max_layer_bid = layer_number
+        # min_layer_bid = layer_number
 
     bundle_size = 2
     #print(f"{job_id} - {NN_data_size}")
@@ -191,13 +199,13 @@ def message_data(job_id, user, num_gpu, num_cpu, duration, bandwidth, gpu_type, 
         "num_gpu": int(),
         "num_cpu": int(),
         "duration": int(),
-        "N_layer": len(NN_gpu),
+        "N_layer": len(num_gpu),
         "N_layer_min": min_layer_bid, # Do not change!! This could be either 1 or = to N_layer_max
         "N_layer_max": max_layer_bid,
         "N_layer_bundle": bundle_size, 
         "edge_id":int(),
-        "NN_gpu": NN_gpu,
-        "NN_cpu": NN_cpu,
+        "NN_gpu": num_gpu,
+        "NN_cpu": num_cpu,
         "NN_data_size": NN_data_size,
         "gpu_type": gpu_type,
         "increase": increase
