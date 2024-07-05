@@ -23,8 +23,8 @@ from src.dataset_loader import init_go_
 
 
 if __name__ == '__main__':
-    NUM_JOBS = 100 #args.num_jobs
-    NUM_NODES = 200
+    NUM_JOBS = 1 #args.num_jobs
+    NUM_NODES = 10
     n_failure = 0
     
     # # ------ START FROM ALIBABA -------
@@ -34,7 +34,9 @@ if __name__ == '__main__':
     # INPUT TRACE FILE
     CSV_FILE_PATH = Path(__file__).parent / 'traces/pai/'
     DESCRIBE_FILE = None
-    CSV_FILE = 'df_dataset.csv'
+    # CSV_FILE = 'df_dataset.csv'
+    CSV_FILE = 'pai_job_no_estimate_100K.csv'
+    
     # rep = sys.argv[1]
     rep = 0
     
@@ -64,13 +66,13 @@ if __name__ == '__main__':
     if not os.path.exists(LOG_DIR):
         os.makedirs(LOG_DIR)
 
-    log_file = LOG_DIR / ("%s-%s-%s-%s.log" % (DATE, CSV_FILE, log_time, comments))
-    logging.basicConfig(level=LOG_LEVEL, format="%(message)s", filename=log_file, filemode='a')
-    describe_file = CSV_FILE_PATH / DESCRIBE_FILE if DESCRIBE_FILE is not None else None
+    # log_file = LOG_DIR / ("%s-%s-%s-%s.log" % (DATE, CSV_FILE, log_time, comments))
+    # logging.basicConfig(level=LOG_LEVEL, format="%(message)s", filename=log_file, filemode='a')
+    # describe_file = CSV_FILE_PATH / DESCRIBE_FILE if DESCRIBE_FILE is not None else None
     
     # ------ END FROM ALIBABA -------
     # generate common dataset and adjust it for plebi
-    dataset = init_go_(NUM_JOBS, ARRIVAL_RATE, rep)
+    dataset = init_go_(NUM_JOBS, CSV_FILE, rep)
     # dataset = sorted(dataset, key=lambda x: x['submit_time'])
 
 
@@ -160,8 +162,8 @@ if __name__ == '__main__':
     utils = ['SGF']
 
     split = [False]
-    # rebid = [False]
-    rebid = [True]
+    rebid = [False]
+    # rebid = [True]
     # dec_factor = [0, .25, .5, .75, 1]
     dec_factor = [0]
 
@@ -189,7 +191,7 @@ if __name__ == '__main__':
                                             n_jobs=NUM_JOBS,
                                             dataset=dataset_plebi,
                                             # failures=failures,
-                                            logical_topology="ring_graph",
+                                            logical_topology="complete_graph",
                                             scheduling_algorithm=scheduling_algorithm,
                                             utility=utility,
                                             debug_level=DebugLevel.TRACE,

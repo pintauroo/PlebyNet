@@ -141,7 +141,7 @@ def _add_job(job_list, job_dict, describe_dict=None):
     
     job_dict['allocated_at'] = 0
 
-    if job_dict['num_gpu'] != 0:
+    if job_dict['num_gpu']:# != 0 and job_dict['num_inst'] > 1 and job_dict['duration'] < 100:
         # if job_dict['gpu_type'] == 'MISC':
         #     if job_dict['num_gpu'] <= 8 and job_dict['num_cpu'] <96:
         #         job_list.append(job_dict)
@@ -152,9 +152,9 @@ def _add_job(job_list, job_dict, describe_dict=None):
         #         job_list.append(job_dict)
         #     # else:
         #     #     print(job_dict)
-        # if job_dict['gpu_type'] == 'T4':
-        #     if job_dict['num_gpu'] <= 2 and job_dict['num_cpu'] <96:
-        #         job_list.append(job_dict)
+        if job_dict['gpu_type'] == 'T4':
+            if job_dict['num_gpu'] <= 8 and job_dict['num_cpu'] <=96:
+                job_list.append(job_dict)
         #     # else:
         #     #     print(job_dict)
         # if job_dict['gpu_type'] == 'V100':
@@ -162,7 +162,8 @@ def _add_job(job_list, job_dict, describe_dict=None):
         #         job_list.append(job_dict)
             # else:
             #     print(job_dict)
-        job_list.append(job_dict)
+
+        # job_list.append(job_dict)
     
 
 
@@ -183,18 +184,18 @@ def add_job(csv_file, describe_dict, limit=None):
 
 
 
-def init_go_(num_jobs, arrivals, seed):
+def init_go_(num_jobs, filename, seed):
     # random.seed(int(time.time()))
     random.seed(int(seed))
     np.random.seed(int(seed))
     current_directory = os.getcwd()
-    csv_file=current_directory+'/traces/pai_job_no_estimate_100K.csv'
+    csv_file=current_directory+'/traces/'+filename
     # csv_file=str(current_directory)+'/traces/pai/pai_job_no_estimate_100K.csv'
     job_list = add_job(csv_file, None, limit=num_jobs)
     print('job_list size:')
     print(len(job_list))
     if (num_jobs is not None) and num_jobs <= len(job_list):
-        random.shuffle(job_list)
+        # random.shuffle(job_list)
         job_list = job_list[:num_jobs]
     # job_list = set_job_list_arrival_time(job_list, arrivals)
     job_list = poisson_arrivals(job_list)

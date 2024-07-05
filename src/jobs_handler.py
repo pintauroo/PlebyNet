@@ -163,13 +163,14 @@ def message_data(job, deallocate=False, split=True, app_type=ApplicationGraphTyp
     duration = job['duration']
     bandwidth = job['bw']
     gpu_type = job['gpu_type']
+    num_instances = job['num_inst']
 
     
 
     random.seed(job_id)
     np.random.seed(int(job_id))
     
-    layer_number = job['num_inst']
+    layer_number = num_instances
 
     # if not split:
     #     layer_number = 1
@@ -199,7 +200,7 @@ def message_data(job, deallocate=False, split=True, app_type=ApplicationGraphTyp
         "num_gpu": int(),
         "num_cpu": int(),
         "duration": int(),
-        "N_layer": len(num_gpu),
+        "N_layer": num_instances,
         "N_layer_min": min_layer_bid, # Do not change!! This could be either 1 or = to N_layer_max
         "N_layer_max": max_layer_bid,
         "N_layer_bundle": bundle_size, 
