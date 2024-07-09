@@ -479,25 +479,36 @@ class Simulator_Plebiscito:
                 while start_id < len(jobs_to_submit):
                     jobs_submitted += 1
                     subset = jobs_to_submit.iloc[start_id:start_id+batch_size]
-                    logging.log(TRACE, '\n-------------------------------NEW JOB---------------------------------')
-                    logging.log(TRACE, subset)
+                    if self.enable_logging:
+                        logging.log(TRACE, '\n-------------------------------NEW JOB---------------------------------')
+                        logging.log(TRACE, subset)
 
 
                     # if self.skip_deconfliction(subset) == False:
                     t = time.time()
+                    nodes_snapshot = self.get_node_snapshot()
+
                     self.dispatch_jobs(progress_bid_events, queues, subset) 
                     time_now = 0 
-                    if subset["job_id"].values[0] == 12 :
-                        print('ktm')
+
                     while not all(q.empty() for q in queues):
+                        # if subset["job_id"].values[0] == 342 and time_now == 2:
+                        if subset["job_id"].values[0] == 305 and time_now == 1:
+                                print('JOB CHECKER!!!!!!')
+
                         for node in self.nodes:
-                            node.work(time_now, time_instant, bid=True)
-                            assert node.get_avail_cpu() >= 0
-                            assert node.get_avail_cpu() <= node.initial_cpu
-                            assert node.get_avail_gpu() >= 0
-                            assert node.get_avail_gpu() <= node.initial_gpu
+                            while not queues[node.id].empty():
+                                rebroadcast = node.work(time_now, time_instant)
+                                assert node.get_avail_cpu() >= 0
+                                assert node.get_avail_cpu() <= node.initial_cpu
+                                assert node.get_avail_gpu() >= 0
+                                assert node.get_avail_gpu() <= node.initial_gpu
+                            if rebroadcast:
+                                node.forward_to_neighbohors()
                             
                         time_now += 1
+                        # self.dispatch_jobs(progress_bid_events, queues, subset) 
+
                     
                     job_allocation_time.append(time.time()-t)
                     logging.log(TRACE, 'All nodes completed the processing... bid processing time: ' + str(time_now))
@@ -527,15 +538,29 @@ class Simulator_Plebiscito:
                                 won_inst = n.bids[subset['job_id'].values[0]]['auction_id'].count(n.id)
                                 allocated_gpu = won_inst * n.bids[subset['job_id'].values[0]]['NN_gpu'] 
                                 allocated_cpu = won_inst * n.bids[subset['job_id'].values[0]]['NN_cpu'] 
-                                print(f"Node {n.id} won {won_inst} instances of job {subset['job_id'].values[0]} with {allocated_cpu} CPUs and {allocated_gpu} GPUs")
+                                # print(f"Node {n.id} won {won_inst} instances of job {subset['job_id'].values[0]} with {allocated_cpu} CPUs and {allocated_gpu} GPUs")
                                 previous_cpu = nodes_snapshot[n.id]['avail_cpu']
                                 previous_gpu = nodes_snapshot[n.id]['avail_gpu']
-                                print(f"Previous CPU: {previous_cpu} - Previous GPU: {previous_gpu}")
+                                # print(f"Previous CPU: {previous_cpu} - Previous GPU: {previous_gpu}")
                                 assert previous_cpu - allocated_cpu == n.get_avail_cpu(), (
                                     f"Assertion failed: previous_cpu ({previous_cpu}) - allocated_cpu ({allocated_cpu}) "
                                     f"!= n.get_avail_cpu() ({n.get_avail_cpu()})"
                                 )
-                                assert previous_gpu - allocated_gpu == n.get_avail_gpu()
+                                assert previous_gpu - allocated_gpu == n.get_avail_gpu(), (
+                                    f"Assertion failed: previous_Gpu ({previous_gpu}) - allocated_Gpu ({allocated_gpu}) "
+                                    f"!= n.get_avail_gpu() ({n.get_avail_gpu()})"
+                                )
+                            else:
+                                # print(f"Node {n.id} didn't win any instance of job {subset['job_id'].values[0]}")
+                                previous_cpu = nodes_snapshot[n.id]['avail_cpu']
+                                previous_gpu = nodes_snapshot[n.id]['avail_gpu']
+                                # print(f"Previous CPU: {previous_cpu} - Previous GPU: {previous_gpu}")
+                                assert previous_cpu == n.get_avail_cpu(), (
+                                    f"Assertion failed: previous_cpu ({previous_cpu}) != n.get_avail_cpu() ({n.get_avail_cpu()})"
+                                )
+                                assert previous_gpu == n.get_avail_gpu(), (
+                                    f"Assertion failed: previous_Gpu ({previous_gpu}) != n.get_avail_gpu() ({n.get_avail_gpu()})"
+                                )
                     # Get node snapshot
                     nodes_snapshot = self.get_node_snapshot()
                         

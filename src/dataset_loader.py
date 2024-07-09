@@ -105,7 +105,8 @@ def _add_job(job_list, job_dict, describe_dict=None):
                 job_dict[key] = 1
         else:
             if key in ['num_cpu', 'num_gpu']:  # in %
-                job_dict[key] = float(job_dict[key]) #round(100 * float(job_dict[key]))
+                # job_dict[key] = float(job_dict[key])
+                job_dict[key] = round(100 * float(job_dict[key]))
             else:
                 job_dict[key] = round(float(job_dict[key]))
         # if key == 'num_inst':
@@ -141,7 +142,7 @@ def _add_job(job_list, job_dict, describe_dict=None):
     
     job_dict['allocated_at'] = 0
 
-    if job_dict['num_gpu']:# != 0 and job_dict['num_inst'] > 1 and job_dict['duration'] < 100:
+    if job_dict['num_gpu'] != 0 and job_dict['num_inst'] > 1 and job_dict['duration'] < 100:
         # if job_dict['gpu_type'] == 'MISC':
         #     if job_dict['num_gpu'] <= 8 and job_dict['num_cpu'] <96:
         #         job_list.append(job_dict)
@@ -153,7 +154,7 @@ def _add_job(job_list, job_dict, describe_dict=None):
         #     # else:
         #     #     print(job_dict)
         if job_dict['gpu_type'] == 'T4':
-            if job_dict['num_gpu'] <= 8 and job_dict['num_cpu'] <=96:
+            if job_dict['num_gpu'] <= 8*100 and job_dict['num_cpu'] <=96*100:
                 job_list.append(job_dict)
         #     # else:
         #     #     print(job_dict)

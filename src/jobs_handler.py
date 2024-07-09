@@ -117,9 +117,9 @@ def dispatch_job(dataset: pd.DataFrame, queues, use_net_topology=False, split=Tr
         random.seed(job['job_id'])
         node_to_submit = random.randint(0, len(queues)-1)
         
-        # for q in queues:
-        #     q.put(data)
-        queues[node_to_submit].put(data)
+        for q in queues:
+            q.put(data)
+        # queues[node_to_submit].put(data)
 
         #time.sleep(timeout)
 

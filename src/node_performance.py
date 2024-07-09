@@ -16,13 +16,13 @@ class NodePerformance:
                   
         self.idle_cpu_consumption = random.randint(20, 70)
         self.idle_cpu_performance = random.randint(20, 70)
-        self.max_cpu_consumption = random.randint(4*self.cpu_core_physical+self.idle_cpu_consumption, 300) # we assume a max CPU TDP of 300W
+        self.max_cpu_consumption = random.randint(4*self.cpu_core_physical+self.idle_cpu_consumption, 100000) # we assume a max CPU TDP of 300W
         self.max_cpu_performance = random.randint(7*self.cpu_core_physical+self.idle_cpu_performance, 14*self.cpu_core_physical+self.idle_cpu_performance) # we assume a max CPU performance of 1200 GFLOPS (see https://www.cpubenchmark.net/cpu_list.php) 
         
         self.idle_gpu_consumption = random.randint(20, 70)
         self.idle_gpu_performance = random.randint(20, 70)
-        self.max_gpu_consumption = random.randint(3*self.gpu_core+self.idle_gpu_consumption, 200)
-        self.max_gpu_performance = random.randint(round(1.5*self.gpu_core)+self.idle_gpu_performance, 1200)
+        self.max_gpu_consumption = random.randint(3*self.gpu_core+self.idle_gpu_consumption, 100000)
+        self.max_gpu_performance = random.randint(round(1.5*self.gpu_core)+self.idle_gpu_performance, 100000)
         
         self.set_default_power_and_performance_models()
 

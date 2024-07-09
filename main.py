@@ -23,7 +23,7 @@ from src.dataset_loader import init_go_
 
 
 if __name__ == '__main__':
-    NUM_JOBS = 1 #args.num_jobs
+    NUM_JOBS = 100 #args.num_jobs
     NUM_NODES = 10
     n_failure = 0
     
@@ -155,11 +155,11 @@ if __name__ == '__main__':
 
     # utils = ['SPEEDUP', 'SPEEDUPV2', "LGF", "UTIL"]  
     # utils = ["UTIL", "SGF"]
-    sched = ['FIFO', 'SDF'] 
-    utils = ['SGF', 'UTIL', 'LGF']
+    # sched = ['FIFO', 'SDF'] 
+    # utils = ['SGF', 'UTIL', 'LGF']
 
     sched = ['FIFO'] 
-    utils = ['SGF']
+    utils = ['LGF']
 
     split = [False]
     rebid = [False]
@@ -191,11 +191,14 @@ if __name__ == '__main__':
                                             n_jobs=NUM_JOBS,
                                             dataset=dataset_plebi,
                                             # failures=failures,
+                                            # logical_topology="ring_graph",
                                             logical_topology="complete_graph",
+                                            # logical_topology="probability_graph",
                                             scheduling_algorithm=scheduling_algorithm,
                                             utility=utility,
                                             debug_level=DebugLevel.TRACE,
-                                            enable_logging=True,
+                                            # enable_logging=True,
+                                            enable_logging=False,
                                             split=sp,
                                             enable_post_allocation=rb,
                                             decrement_factor=dc)
