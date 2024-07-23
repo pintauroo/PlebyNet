@@ -5,10 +5,11 @@ import sys
 import pandas as pd
 import os
 import time
-import logging
+# import logging
 import random
 from pathlib import Path
 from os import path
+import numpy as np
 
 from src.simulator import Simulator_Plebiscito
 from src.config import ApplicationGraphType, DebugLevel, SchedulingAlgorithm, Utility
@@ -23,8 +24,8 @@ from src.dataset_loader import init_go_
 
 
 if __name__ == '__main__':
-    NUM_JOBS = 100 #args.num_jobs
-    NUM_NODES = 10
+    NUM_JOBS = 35 #args.num_jobs
+    NUM_NODES = 100
     n_failure = 0
     
     # # ------ START FROM ALIBABA -------
@@ -37,7 +38,7 @@ if __name__ == '__main__':
     # CSV_FILE = 'df_dataset.csv'
     CSV_FILE = 'pai_job_no_estimate_100K.csv'
     
-    # rep = sys.argv[1]
+    rep = sys.argv[1]
     rep = 0
     
     ARRIVAL_RATE =0 # args.arrival_rate
@@ -46,7 +47,7 @@ if __name__ == '__main__':
     SORT_NODE_POLICY = 3
     MAX_TIME = int(1e9)
     VERBOSE = 0
-    LOG_LEVEL = logging.WARNING
+    # LOG_LEVEL = logging.WARNING
     NUM_CPUS = round(23.22 * NUM_GPUS)  # 23.22 * num_gpus 156576/6742
     HETERO = True  # heterogeneous cluster
     PATTERN = 0  # Cluster capacity varying pattern
@@ -86,20 +87,16 @@ if __name__ == '__main__':
     # # Write to CSV file
     # df.to_csv('static_dataset.csv', index=False)
 
-    for job_dict in dataset:
-        job_dict['submit_time'] += 1
-        job_dict['bw'] = 0
-        #job_dict["bw"] = 0 #float(job_dict["write_count"])
-        job_dict["final_node_allocation"] = []
-        job_dict["final_gpu_allocation"] = []
-        job_dict["deadline"] = job_dict['submit_time'] + job_dict['duration'] * (1 + 0.1 * random.random()) # 10% deadline slack
-        job_dict["exec_time"] = -1
-        job_dict["complete_time"] = 0
-        job_dict["current_duration"] = 0 # this value keeps track of the job's current duration with respect to the speedup. Not useful to plot, it is used for internal purposes
-        job_dict["speedup"] = 1
+
+
     
     dataset_plebi = pd.DataFrame(dataset[:NUM_JOBS])
-        
+    dataset_plebi.to_csv('MISC.csv')
+    # dataset_plebi = dataset_plebi.sort_values(by=['num_pod', 'job_id'])
+    # if (dataset_plebi['num_gpu']*dataset_plebi['num_pod']).sum()/100 > 8 * NUM_NODES:
+    print((dataset_plebi['num_gpu']*dataset_plebi['num_pod']).sum()/100, 8 * NUM_NODES)
+    print((dataset_plebi['num_cpu']*dataset_plebi['num_pod']).sum()/100, 96 * NUM_NODES)
+    print(dataset_plebi['num_pod'].sum(), NUM_JOBS)
     
     # dataset = generate_dataset(entries_num=NUM_JOBS)
     # failures = generate_node_failures(n_nodes, n_failure, NUM_JOBS)
@@ -156,16 +153,20 @@ if __name__ == '__main__':
     # utils = ['SPEEDUP', 'SPEEDUPV2', "LGF", "UTIL"]  
     # utils = ["UTIL", "SGF"]
     # sched = ['FIFO', 'SDF'] 
-    # utils = ['SGF', 'UTIL', 'LGF']
+    utils = ['SGF', 'UTIL', 'LGF']
 
     sched = ['FIFO'] 
-    utils = ['LGF']
+    # utils = ['SGF']
 
     split = [False]
     rebid = [False]
     # rebid = [True]
     # dec_factor = [0, .25, .5, .75, 1]
-    dec_factor = [0]
+    dec_factor = [0.5]
+    probability = [0.5 + i * 0.1 for i in range(int((1.0 - 0.5) / 0.1) + 1)]
+    # probability = [1]
+    bw = [1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000]
+    # bw = [10000]
 
     for u in utils:
         utility = getattr(Utility, u, None)
@@ -174,8 +175,8 @@ if __name__ == '__main__':
             continue
         
         dec_factor = [0]
-        if u == "LGF":
-            dec_factor = [0, 1]
+        # if u == "LGF":
+        #     dec_factor = [0, 1]
 
         for s in sched:
             scheduling_algorithm = getattr(SchedulingAlgorithm, s, None)
@@ -185,24 +186,30 @@ if __name__ == '__main__':
 
             for sp in split:
                 for rb in rebid:
-                    for dc in dec_factor:
-                        simulator = Simulator_Plebiscito(filename=rep,
-                                            n_nodes=NUM_NODES,
-                                            n_jobs=NUM_JOBS,
-                                            dataset=dataset_plebi,
-                                            # failures=failures,
-                                            # logical_topology="ring_graph",
-                                            logical_topology="complete_graph",
-                                            # logical_topology="probability_graph",
-                                            scheduling_algorithm=scheduling_algorithm,
-                                            utility=utility,
-                                            debug_level=DebugLevel.TRACE,
-                                            # enable_logging=True,
-                                            enable_logging=False,
-                                            split=sp,
-                                            enable_post_allocation=rb,
-                                            decrement_factor=dc)
-                        simulator.run()
+                    for b in bw:
+                        for prob in probability:
+                            simulator = Simulator_Plebiscito(filename=rep,
+                                                n_nodes=NUM_NODES,
+                                                n_jobs=NUM_JOBS,
+                                                dataset=dataset_plebi,
+                                                # failures=failures,
+                                                # logical_topology="ring_graph",
+                                                # logical_topology="compute_ring_graph",
+                                                logical_topology="compute_probabilistic_graph",
+                                                # logical_topology="probability_graph",
+                                                scheduling_algorithm=scheduling_algorithm,
+                                                utility=utility,
+                                                debug_level=DebugLevel.TRACE,
+                                                # enable_logging=True,
+                                                split=sp,
+                                                enable_post_allocation=rb,
+                                                # decrement_factor=dc,
+                                                # probability=1,
+                                                probability=prob,
+                                                max_bw=b
+                                                )
+                            simulator.run()
+                            simulator.save_res('results.csv', rep)
     
     # nodes = simulator1.get_nodes()
     # adj = simulator1.get_adjacency_matrix()

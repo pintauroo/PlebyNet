@@ -94,7 +94,7 @@ def _add_job(job_list, job_dict, describe_dict=None):
             except:
                 pass
 
-    keys = ['num_cpu', 'num_gpu', 'submit_time', 'num_inst']
+    keys = ['num_cpu', 'num_gpu', 'submit_time', 'num_inst', 'num_pod']
     for key in keys:
         if key not in job_dict or job_dict[key] == '':
             if key in ['num_cpu', 'num_gpu']:
@@ -109,6 +109,8 @@ def _add_job(job_list, job_dict, describe_dict=None):
                 job_dict[key] = round(100 * float(job_dict[key]))
             else:
                 job_dict[key] = round(float(job_dict[key]))
+            if key == 'num_pod':
+                job_dict[key] = int(float(job_dict[key]))
         # if key == 'num_inst':
         #     job_dict[key] = 1
 
@@ -142,10 +144,13 @@ def _add_job(job_list, job_dict, describe_dict=None):
     
     job_dict['allocated_at'] = 0
 
-    if job_dict['num_gpu'] != 0 and job_dict['num_inst'] > 1 and job_dict['duration'] < 100:
-        # if job_dict['gpu_type'] == 'MISC':
-        #     if job_dict['num_gpu'] <= 8 and job_dict['num_cpu'] <96:
-        #         job_list.append(job_dict)
+    # if job_dict['num_gpu'] != 0 and int(float(job_dict['num_pod'])) > 1 and job_dict['duration'] < 100:
+    if job_dict['num_gpu'] != 0 and int(float(job_dict['num_pod'])) > 1:
+    # if job_dict['num_gpu'] != 0:
+        if job_dict['gpu_type'] == 'MISC':
+            if job_dict['num_gpu'] <= 8*100 and job_dict['num_cpu'] <= 96*100 and job_dict['duration'] > 1000: # and job_dict['num_pod'] < 30
+            # if job_dict['num_gpu'] <= 8*100 and job_dict['num_cpu'] <96*100:
+                job_list.append(job_dict)
             # else:
             #     print(job_dict)
         # if job_dict['gpu_type'] == 'P100':
@@ -153,13 +158,14 @@ def _add_job(job_list, job_dict, describe_dict=None):
         #         job_list.append(job_dict)
         #     # else:
         #     #     print(job_dict)
-        if job_dict['gpu_type'] == 'T4':
-            if job_dict['num_gpu'] <= 8*100 and job_dict['num_cpu'] <=96*100:
-                job_list.append(job_dict)
+        # if job_dict['gpu_type'] == 'T4':
+        #     red = 1
+        #     if job_dict['num_gpu'] <= 8*100/red and job_dict['num_cpu'] <=96*100/red and job_dict['num_pod'] > 6:
+        #         job_list.append(job_dict)
         #     # else:
         #     #     print(job_dict)
         # if job_dict['gpu_type'] == 'V100':
-        #     if job_dict['num_gpu'] <= 8 and job_dict['num_cpu'] <96:
+        #     if job_dict['num_gpu'] <= 8*100 and job_dict['num_cpu'] <96*100 and job_dict['num_pod'] > 6:
         #         job_list.append(job_dict)
             # else:
             #     print(job_dict)
@@ -180,6 +186,7 @@ def add_job(csv_file, describe_dict, limit=None):
             _add_job(job_list, row, describe_dict)
             # if limit is not None and i >= 1000:
             #     break
+    print(len(job_list))
     return job_list
 
 
@@ -189,16 +196,48 @@ def init_go_(num_jobs, filename, seed):
     # random.seed(int(time.time()))
     random.seed(int(seed))
     np.random.seed(int(seed))
-    current_directory = os.getcwd()
-    csv_file=current_directory+'/traces/'+filename
+    # current_directory = os.getcwd()
+    # csv_file=current_directory+'/traces/'+filename
+    csv_file = '/home/andrea/Desktop/PlebiscitoN/traces/pai/df_dataset.csv'
     # csv_file=str(current_directory)+'/traces/pai/pai_job_no_estimate_100K.csv'
     job_list = add_job(csv_file, None, limit=num_jobs)
-    print('job_list size:')
-    print(len(job_list))
-    if (num_jobs is not None) and num_jobs <= len(job_list):
-        # random.shuffle(job_list)
-        job_list = job_list[:num_jobs]
+    # print('job_list size:')
+    # print(len(job_list))
+    # if (num_jobs is not None) and num_jobs <= len(job_list):
+
+    # print(job_list[0]['job_id'])
     # job_list = set_job_list_arrival_time(job_list, arrivals)
+
+    for job_dict in job_list:
+        job_dict['submit_time'] += 1
+        job_dict['bw'] = 0
+        #job_dict["bw"] = 0 #float(job_dict["write_count"])
+        job_dict["write_count"] = min(1000, int(float(job_dict["write_count"])) / 10 if int(float(job_dict["write_count"]))/ 100 > 10 else 10 )
+        job_dict["read_count"] = min(1000, int(float(job_dict["read_count"])) / 10 if int(float(job_dict["read_count"]))/ 100 > 10 else 10)
+        job_dict["final_node_allocation"] = []
+        job_dict["final_gpu_allocation"] = []
+        job_dict["deadline"] = job_dict['submit_time'] + job_dict['duration'] * (1 + 0.1 * random.random()) # 10% deadline slack
+        job_dict["exec_time"] = -1
+        job_dict["complete_time"] = 0
+        job_dict["current_duration"] = 0 # this value keeps track of the job's current duration with respect to the speedup. Not useful to plot, it is used for internal purposes
+        job_dict["speedup"] = 1
+        # job_dict['num_pod'] = int(float(job_dict['num_pod']))
+        # job_dict['num_pod'] = 3
+        # job_dict['num_gpu'] = 8*100 
+        # job_dict['num_cpu'] = 96*100
+        job_dict["ps"] = job_dict['num_pod'] // 5
+        # job_dict['read_count'] = job_dict['num_gpu'] * job_dict['num_cpu']  * job_dict['num_pod'] / 10000
+        # decrease = random.uniform(1, 4)
+        # job_dict['num_gpu'] = int(float(job_dict['num_gpu'])/job_dict['num_pod'])
+        # job_dict['num_cpu'] = int(float(job_dict['num_cpu'])/job_dict['num_pod'])
+
+    job_list = job_list[:num_jobs]
+    random.seed(int(time.time()))
+
+    random.shuffle(job_list)
+    print(job_list[0]['job_id'], len(job_list))
+
+
     job_list = poisson_arrivals(job_list)
     # print(job_list)
     # sys.exit()

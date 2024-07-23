@@ -153,74 +153,34 @@ def generate_application_graph(layer_number, app_type, bandwidth):
                 
     return graph        
 
+
 def message_data(job, deallocate=False, split=True, app_type=ApplicationGraphType.LINEAR, speedup=0, increase=True):
-
     
-    job_id = job['job_id']
-    user = job['user']
-    num_gpu = job['num_gpu']
-    num_cpu = job['num_cpu']
-    duration = job['duration']
-    bandwidth = job['bw']
-    gpu_type = job['gpu_type']
-    num_instances = job['num_inst']
+    random.seed(job['job_id'])
+    np.random.seed(int(job['job_id']))
 
-    
-
-    random.seed(job_id)
-    np.random.seed(int(job_id))
-    
-    layer_number = num_instances
-
-    # if not split:
-    #     layer_number = 1
-
-    # use numpy to create an array of random numbers with length equal to the number of layers. As a constraint, the sum of the array must be equal to the number of GPUs
-    # NN_gpu = np.random.dirichlet(np.ones(layer_number), size=1)[0] * num_gpu
-    # NN_cpu = np.random.dirichlet(np.ones(layer_number), size=1)[0] * num_cpu
-
-    
-    NN_data_size = generate_application_graph(layer_number, app_type, 1000000)
-
-    # if split:
-    max_layer_bid = layer_number
-    if max_layer_bid > layer_number:
-        max_layer_bid = layer_number
-    min_layer_bid = 1
-    # else:
-        # max_layer_bid = layer_number
-        # min_layer_bid = layer_number
-
-    bundle_size = 2
-    #print(f"{job_id} - {NN_data_size}")
-    
     data = {
-        "job_id": int(),
-        "user": int(),
-        "num_gpu": int(),
-        "num_cpu": int(),
-        "duration": int(),
-        "N_layer": num_instances,
-        "N_layer_min": min_layer_bid, # Do not change!! This could be either 1 or = to N_layer_max
-        "N_layer_max": max_layer_bid,
-        "N_layer_bundle": bundle_size, 
-        "edge_id":int(),
-        "NN_gpu": num_gpu,
-        "NN_cpu": num_cpu,
-        "NN_data_size": NN_data_size,
-        "gpu_type": gpu_type,
-        "increase": increase
-        }
+        "job_id": job['job_id'],
+        "user": job['user'],
+        "num_gpu": job['num_gpu'],
+        "num_cpu": job['num_cpu'],
+        "duration": job['duration'],
+        "N_layer": int(float(job['num_pod'])),
+        "N_layer_min": 1,
+        "N_layer_max": min(int(float(job['num_pod'])), int(float(job['num_pod'])) if split else 1),
+        "N_layer_bundle": 2,
+        "edge_id": None,
+        "NN_gpu": job['num_gpu'],
+        "NN_cpu": job['num_cpu'],
+        "NN_data_size": job['bw'],
+        "gpu_type": job['gpu_type'],
+        "increase": increase,
+        "ps": job['ps'],
+        "read_count":  int(job['read_count']),
+        "write_count": int(job['write_count']),
+        "speedup": speedup
+    }
 
-    data['edge_id']=None
-    data['job_id']=job_id
-    data['user']=user
-    data['num_gpu']=num_gpu
-    data['num_cpu']=num_cpu
-    data['duration']=duration
-    data['job_id']=job_id
-    data['speedup'] = speedup
-    
     if deallocate:
         data["unallocate"] = True
 
