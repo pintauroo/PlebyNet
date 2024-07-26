@@ -596,11 +596,19 @@ class Simulator_Plebiscito:
 
                         break_outer_loop = False
                         allocated_bw = False
+                        prev_topo = copy.deepcopy(self.topology.bandwidth_matrix_updated)
 
                         for allocation in list(allocations_ids)[1:]:
                             for _ in range(allocations.count(allocation)):
+                                prev_topo = copy.deepcopy(self.topology.bandwidth_matrix_updated)
                                 allocated_bw = self.topology.allocate_bandwidth(allocations[0], allocation, int(subset['read_count'].iloc[0]))
                                 if allocated_bw == False:
+                                    self.topology.restore_updated_topo(prev_topo)
+                                    
+                                    if np.any(prev_topo != self.topology.bandwidth_matrix_updated):
+                                        print('Rolling back the topology')
+                                    else:
+                                        print(self.topology.get_total_percentage_bw_used())
                                     self.deallocate_jobs(progress_bid_events, queues, pd.DataFrame(a_jobs))
                                     break_outer_loop = True
                                     logging.log(TRACE, 'Bandwidth allocation failed!!!!!!!!!')

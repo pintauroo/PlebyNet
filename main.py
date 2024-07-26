@@ -38,7 +38,7 @@ if __name__ == '__main__':
     # CSV_FILE = 'df_dataset.csv'
     CSV_FILE = 'pai_job_no_estimate_100K.csv'
     
-    rep = sys.argv[1]
+    # rep = sys.argv[1]
     rep = 0
     
     ARRIVAL_RATE =0 # args.arrival_rate

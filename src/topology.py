@@ -65,7 +65,8 @@ class Topology:
         return (self.get_total_remaining_bw() / self.get_total_initial_bw() ) * 100
     
 
-    
+    def restore_updated_topo(self, topo):
+        self.bandwidth_matrix_updated = topo
     
         
 
