@@ -2,6 +2,7 @@
 Topology building module
 """
 
+import copy
 from matplotlib import pyplot as plt
 import numpy as np
 
@@ -62,11 +63,11 @@ class Topology:
         return self.get_total_initial_bw() - self.get_total_remaining_bw()
     
     def get_total_percentage_bw_used(self):
-        return (self.get_total_remaining_bw() / self.get_total_initial_bw() ) * 100
+        return 100 - (self.get_total_remaining_bw() / self.get_total_initial_bw() ) * 100
     
 
     def restore_updated_topo(self, topo):
-        self.bandwidth_matrix_updated = topo
+        self.bandwidth_matrix_updated = copy.deepcopy(topo)
     
         
 
@@ -103,21 +104,21 @@ class Topology:
     #         print(f"Insufficient bandwidth to allocate {bandwidth} between node {node1} and node {node2}")
     #         return False
     
-    def allocate_bandwidth(self, node1, node2, bandwidth):
+    def allocate_bandwidth(self, node1, node2, bandwidth, tmp_topo):
         # Allocate the bandwidth between node1 and node2
-        if (self.bandwidth_matrix_updated[node1][node2] >= bandwidth and 
-            self.bandwidth_matrix_updated[node2][node1] >= bandwidth):
+        if (tmp_topo[node1][node2] >= bandwidth and 
+            tmp_topo[node2][node1] >= bandwidth):
 
-            self.bandwidth_matrix_updated[node1][node2] -= bandwidth
-            self.bandwidth_matrix_updated[node2][node1] -= bandwidth
+            tmp_topo[node1][node2] -= bandwidth
+            tmp_topo[node2][node1] -= bandwidth
 
             # Adjust the bandwidth for all other connections of node1 and node2
             for i in range(self.n):
                 if i != node1 and i != node2:
-                    self.bandwidth_matrix_updated[node1][i] = max(0, self.bandwidth_matrix_updated[node1][i] - bandwidth)
-                    self.bandwidth_matrix_updated[i][node1] = max(0, self.bandwidth_matrix_updated[i][node1] - bandwidth)
-                    self.bandwidth_matrix_updated[node2][i] = max(0, self.bandwidth_matrix_updated[node2][i] - bandwidth)
-                    self.bandwidth_matrix_updated[i][node2] = max(0, self.bandwidth_matrix_updated[i][node2] - bandwidth)
+                    tmp_topo[node1][i] = max(0, tmp_topo[node1][i] - bandwidth)
+                    tmp_topo[i][node1] = max(0, tmp_topo[i][node1] - bandwidth)
+                    tmp_topo[node2][i] = max(0, tmp_topo[node2][i] - bandwidth)
+                    tmp_topo[i][node2] = max(0, tmp_topo[i][node2] - bandwidth)
             
             print(f"Allocated {bandwidth} bandwidth between node {node1} and node {node2}")
             return True

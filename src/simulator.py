@@ -518,8 +518,11 @@ class Simulator_Plebiscito:
                     subset = jobs_to_submit.iloc[start_id:start_id+batch_size]
 
                     # if self.enable_logging:
-                    logging.log(TRACE, '\n-------------------------------NEW JOB---------------------------------')
-                    logging.log(TRACE, subset)
+                    # logging.log(TRACE, '\n-------------------------------NEW JOB---------------------------------')
+                    # logging.log(TRACE, subset)
+                    if int(self.topology.get_total_percentage_bw_used())>0:
+                            print(self.topology.get_total_percentage_bw_used())
+                            print()
 
 
                     # if self.skip_deconfliction(subset) == False:
@@ -531,7 +534,7 @@ class Simulator_Plebiscito:
 
                     while not all(q.empty() for q in queues):
                         # if subset["job_id"].values[0] == 342 and time_now == 2:
-                        if subset["job_id"].values[0] == 2099 and time_now == 0:
+                        if subset["job_id"].values[0] == 1022 and time_now == 0:
                                 print('JOB CHECKER!!!!!!')
 
                         for node in self.nodes:
@@ -542,6 +545,7 @@ class Simulator_Plebiscito:
                             while not queues[node.id].empty():
 
                                 rebroadcast = node.work(time_now, time_instant)
+
                                 assert node.get_avail_cpu() >= 0
                                 assert node.get_avail_cpu() <= node.initial_cpu
                                 assert node.get_avail_gpu() >= 0
@@ -553,6 +557,8 @@ class Simulator_Plebiscito:
                                 node.forward_to_neighbohors()
                             
                         time_now += 1
+                        # print(self.topology.get_total_percentage_bw_used())
+
                         # self.dispatch_jobs(progress_bid_events, queues, subset) 
 
                     
@@ -596,28 +602,45 @@ class Simulator_Plebiscito:
 
                         break_outer_loop = False
                         allocated_bw = False
-                        prev_topo = copy.deepcopy(self.topology.bandwidth_matrix_updated)
+                        tmp_topo = copy.deepcopy(self.topology.bandwidth_matrix_updated)
+                        
+                        if a_jobs_id == 1022:
+                            print('JOB CHECKER!!!!!!')
+                            
+                        # print('before')
+                        # print(self.topology.get_total_percentage_bw_used())
+
 
                         for allocation in list(allocations_ids)[1:]:
                             for _ in range(allocations.count(allocation)):
-                                prev_topo = copy.deepcopy(self.topology.bandwidth_matrix_updated)
-                                allocated_bw = self.topology.allocate_bandwidth(allocations[0], allocation, int(subset['read_count'].iloc[0]))
+                                allocated_bw = self.topology.allocate_bandwidth(allocations[0], allocation, int(subset['read_count'].iloc[0]), tmp_topo)
                                 if allocated_bw == False:
-                                    self.topology.restore_updated_topo(prev_topo)
+                                    # self.topology.restore_updated_topo(prev_topo)
                                     
-                                    if np.any(prev_topo != self.topology.bandwidth_matrix_updated):
-                                        print('Rolling back the topology')
-                                    else:
-                                        print(self.topology.get_total_percentage_bw_used())
+                                    # if np.any(prev_topo != self.topology.bandwidth_matrix_updated):
+                                    #     print('Rolling back the topology')
+                                    # else:
+                                    print(self.topology.get_total_percentage_bw_used())
                                     self.deallocate_jobs(progress_bid_events, queues, pd.DataFrame(a_jobs))
                                     break_outer_loop = True
                                     logging.log(TRACE, 'Bandwidth allocation failed!!!!!!!!!')
                                     break
                             if break_outer_loop:
                                 break
+                            
+                        # if int(self.topology.get_total_percentage_bw_used())>0:
+                        #     print(self.topology.get_total_percentage_bw_used())
+                        #     print()
+                        
 
                         if len(allocations_ids)>0 and allocated_bw == True:
                             tot_allocated_bw += int(subset['read_count'].iloc[0])
+                            self.topology.restore_updated_topo(tmp_topo)
+                            logging.log(TRACE, '\n-Allocated JOB!!!!!!!!!!')
+                            logging.log(TRACE, subset)
+                            
+                            
+                            
                         
                         if len(allocations_ids)==1 or allocated_bw == True:
                             tot_assigned_jobs +=1
