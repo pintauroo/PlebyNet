@@ -521,7 +521,14 @@ class Simulator_Plebiscito:
                     # logging.log(TRACE, '\n-------------------------------NEW JOB---------------------------------')
                     # logging.log(TRACE, subset)
                     if int(self.topology.get_total_percentage_bw_used())>0:
-                            print(self.topology.get_total_percentage_bw_used())
+                            print(
+                                'inital BW:',
+                                self.topology.get_total_initial_bw(),
+                                ' remaining BW:',
+                                self.topology.get_total_allocated_bw(),
+                                ' perc used BW:',
+                                self.topology.get_total_percentage_bw_used(),
+                                )
                             print()
 
 
@@ -636,7 +643,7 @@ class Simulator_Plebiscito:
                         if len(allocations_ids)>0 and allocated_bw == True:
                             tot_allocated_bw += int(subset['read_count'].iloc[0])
                             self.topology.restore_updated_topo(tmp_topo)
-                            logging.log(TRACE, '\n-Allocated JOB!!!!!!!!!!')
+                            logging.log(TRACE, '\n-----Allocated JOB!!!!!!!!!!')
                             logging.log(TRACE, subset)
                             
                             

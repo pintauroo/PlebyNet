@@ -43,27 +43,44 @@ class Topology:
     # Getter for the local matrix
     def get_adjacency_matrix(self):
         return self.adjacency_matrix.astype(int).tolist()
+    
     def get_updated_bw_matrix(self):
         return self.bandwidth_matrix_updated.astype(int).tolist()
+    
     def get_initial_bw_matrix(self):
         return self.bandwidth_matrix.astype(int).tolist()
+    
+    # def get_total_initial_bw(self):
+    #     initial_total_bandwidth = 0
+    #     for i in range(self.n):
+    #         initial_total_bandwidth += max(self.bandwidth_matrix[i])
+    #     return initial_total_bandwidth
+    
     def get_total_initial_bw(self):
         initial_total_bandwidth = 0
         for i in range(self.n):
-            initial_total_bandwidth += max(self.bandwidth_matrix[i])
+            for j in range(i + 1, self.n):
+                initial_total_bandwidth += self.bandwidth_matrix[i][j]
         return initial_total_bandwidth
+    
+    # def get_total_remaining_bw(self):
+    #     updated_total_bandwidth = 0
+    #     for i in range(self.n):
+    #         updated_total_bandwidth += max(self.bandwidth_matrix_updated[i])
+    #     return updated_total_bandwidth
     
     def get_total_remaining_bw(self):
         updated_total_bandwidth = 0
         for i in range(self.n):
-            updated_total_bandwidth += max(self.bandwidth_matrix_updated[i])
+            for j in range(i + 1, self.n):
+                updated_total_bandwidth += self.bandwidth_matrix_updated[i][j]
         return updated_total_bandwidth
     
     def get_total_allocated_bw(self):
         return self.get_total_initial_bw() - self.get_total_remaining_bw()
     
     def get_total_percentage_bw_used(self):
-        return 100 - (self.get_total_remaining_bw() / self.get_total_initial_bw() ) * 100
+        return (self.get_total_allocated_bw() / self.get_total_initial_bw() ) * 100
     
 
     def restore_updated_topo(self, topo):

@@ -212,8 +212,8 @@ def init_go_(num_jobs, filename, seed):
         job_dict['submit_time'] += 1
         job_dict['bw'] = 0
         #job_dict["bw"] = 0 #float(job_dict["write_count"])
-        job_dict["write_count"] = min(1000, int(float(job_dict["write_count"])) / 10 if int(float(job_dict["write_count"]))/ 100 > 10 else 10 )
-        job_dict["read_count"] = min(1000, int(float(job_dict["read_count"])) / 10 if int(float(job_dict["read_count"]))/ 100 > 10 else 10)
+        job_dict["write_count"] = max(1000, int(float(job_dict["write_count"]))  if int(float(job_dict["write_count"]))/ 100 > 10 else 10 )
+        job_dict["read_count"] = max(1000, int(float(job_dict["read_count"]))  if int(float(job_dict["read_count"]))/ 100 > 10 else 10)
         job_dict["final_node_allocation"] = []
         job_dict["final_gpu_allocation"] = []
         job_dict["deadline"] = job_dict['submit_time'] + job_dict['duration'] * (1 + 0.1 * random.random()) # 10% deadline slack

@@ -165,8 +165,8 @@ if __name__ == '__main__':
     dec_factor = [0.5]
     probability = [0.5 + i * 0.1 for i in range(int((1.0 - 0.5) / 0.1) + 1)]
     # probability = [1]
-    bw = [1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000]
-    # bw = [10000]
+    # bw = [1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000]
+    bw = [50000]
 
     for u in utils:
         utility = getattr(Utility, u, None)
