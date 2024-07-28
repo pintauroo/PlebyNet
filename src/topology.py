@@ -3,6 +3,7 @@ Topology building module
 """
 
 import copy
+import time
 from matplotlib import pyplot as plt
 import numpy as np
 
@@ -12,6 +13,8 @@ class Topology:
         self.to = getattr(self, func_name)
         self.b = max_bandwidth
         self.probability = probability
+        
+        print(f"Topology function: {func_name}")
         
         np.random.seed(0)
         
@@ -121,7 +124,9 @@ class Topology:
     #         print(f"Insufficient bandwidth to allocate {bandwidth} between node {node1} and node {node2}")
     #         return False
     
-    def allocate_bandwidth(self, node1, node2, bandwidth, tmp_topo):
+    def allocate_bandwidth(self, node1, node2, bandwidth, tmp_topo=None):
+        if tmp_topo is None:
+            tmp_topo = self.bandwidth_matrix_updated
         # Allocate the bandwidth between node1 and node2
         if (tmp_topo[node1][node2] >= bandwidth and 
             tmp_topo[node2][node1] >= bandwidth):
@@ -204,10 +209,12 @@ class Topology:
         return self.adjacency_matrix
 
     def compute_probabilistic_graph(self):
+        print("Computing probabilistic graph")
+        np.random.seed(int(time.time()))  # Ensure a new random seed is set
         adjacency_matrix = np.zeros((self.n, self.n))
         for i in range(self.n):
             for j in range(i + 1, self.n):
-                value = np.random.choice([0, 1], p=[1-self.probability, self.probability])
+                value = np.random.choice([0, 1], p=[1 - self.probability, self.probability])
                 adjacency_matrix[i][j] = value
                 adjacency_matrix[j][i] = value
         return adjacency_matrix
