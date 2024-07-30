@@ -541,8 +541,9 @@ class Simulator_Plebiscito:
 
                     while not all(q.empty() for q in queues):
                         # if subset["job_id"].values[0] == 342 and time_now == 2:
-                        if subset["job_id"].values[0] == 1022 and time_now == 0:
+                        if subset["job_id"].values[0] == 234 and time_now == 0:
                                 print('JOB CHECKER!!!!!!')
+                                
 
                         for node in self.nodes:
                             if int(subset['job_id'].iloc[0]) in node.bids:
@@ -550,6 +551,10 @@ class Simulator_Plebiscito:
                             else:
                                 prev_bid = []
                             while not queues[node.id].empty():
+                                if subset["job_id"].values[0] == 234 and node.id ==0 and time_now == 1:
+                                        print(queues[node.id].qsize())
+                                        print('JOB CHECKER!!!!!!')
+                                
 
                                 rebroadcast = node.work(time_now, time_instant)
 
@@ -808,6 +813,12 @@ class Simulator_Plebiscito:
         #     e.clear()
 
     def save_res(self, file_path, rep):
+        
+        msg_count = 0
+        for node in self.nodes:
+            msg_count += node.count_msgs
+            print(msg_count)
+        
 
 
         init_cpu = self.nodes[0].initial_cpu * self.n_nodes

@@ -198,7 +198,7 @@ def init_go_(num_jobs, filename, seed):
     np.random.seed(int(seed))
     # current_directory = os.getcwd()
     # csv_file=current_directory+'/traces/'+filename
-    csv_file = '/home/andrea/Desktop/PlebiscitoN/traces/pai/df_dataset.csv'
+    csv_file = '/home/andrea/PlebyNet/traces/pai/df_dataset.csv'
     # csv_file=str(current_directory)+'/traces/pai/pai_job_no_estimate_100K.csv'
     job_list = add_job(csv_file, None, limit=num_jobs)
     # print('job_list size:')
@@ -212,8 +212,8 @@ def init_go_(num_jobs, filename, seed):
         job_dict['submit_time'] += 1
         job_dict['bw'] = 0
         #job_dict["bw"] = 0 #float(job_dict["write_count"])
-        job_dict["write_count"] = max(1000, int(float(job_dict["write_count"]))  if int(float(job_dict["write_count"]))/ 100 > 10 else 10 )
-        job_dict["read_count"] = max(1000, int(float(job_dict["read_count"]))  if int(float(job_dict["read_count"]))/ 100 > 10 else 10)
+        job_dict["write_count"] = min(5000, int(float(job_dict["write_count"])) )
+        job_dict["read_count"] =  min(5000, int(float(job_dict["read_count"]))  )
         job_dict["final_node_allocation"] = []
         job_dict["final_gpu_allocation"] = []
         job_dict["deadline"] = job_dict['submit_time'] + job_dict['duration'] * (1 + 0.1 * random.random()) # 10% deadline slack
@@ -222,9 +222,9 @@ def init_go_(num_jobs, filename, seed):
         job_dict["current_duration"] = 0 # this value keeps track of the job's current duration with respect to the speedup. Not useful to plot, it is used for internal purposes
         job_dict["speedup"] = 1
         # job_dict['num_pod'] = int(float(job_dict['num_pod']))
-        # job_dict['num_pod'] = 3
-        # job_dict['num_gpu'] = 8*100 
-        # job_dict['num_cpu'] = 96*100
+        # job_dict['num_pod'] = 1
+        # job_dict['num_gpu'] = 1# 8*100 
+        # job_dict['num_cpu'] = 1#96*100
         job_dict["ps"] = job_dict['num_pod'] // 5
         # job_dict['read_count'] = job_dict['num_gpu'] * job_dict['num_cpu']  * job_dict['num_pod'] / 10000
         # decrease = random.uniform(1, 4)

@@ -8,5 +8,5 @@ END_INDEX=30
 for i in $(seq $START_INDEX $END_INDEX)
 do
     # Call the Python script with the current index
-    python3 /home/andrea/Desktop/PlebiscitoN/main.py $i
+    python3 main.py $i
 done

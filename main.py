@@ -153,7 +153,9 @@ if __name__ == '__main__':
     # utils = ['SPEEDUP', 'SPEEDUPV2', "LGF", "UTIL"]  
     # utils = ["UTIL", "SGF"]
     # sched = ['FIFO', 'SDF'] 
-    utils = ['SGF', 'UTIL', 'LGF']
+    # utils = ['LGF']
+    utils = ['UTIL', 'SGF', 'LGF']
+    # utils = ['LGF']
 
     sched = ['FIFO'] 
     # utils = ['SGF']
@@ -162,11 +164,12 @@ if __name__ == '__main__':
     rebid = [False]
     # rebid = [True]
     # dec_factor = [0, .25, .5, .75, 1]
-    dec_factor = [0.5]
+    dec_factor = [0.3]
     probability = [0.5 + i * 0.1 for i in range(int((1.0 - 0.5) / 0.1) + 1)]
-    # probability = [1]
-    # bw = [1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000]
-    bw = [50000]
+    # probability = [0.3]
+    # bw = [2000, 4000, 8000, 16000, 32000, 64000, 128000]
+    bw = [5000, 10000, 20000, 40000, 80000, 100000, 128000]
+    # bw = [1111110000]
 
     for u in utils:
         utility = getattr(Utility, u, None)
@@ -195,8 +198,9 @@ if __name__ == '__main__':
                                                 # failures=failures,
                                                 # logical_topology="ring_graph",
                                                 # logical_topology="compute_ring_graph",
+                                                # logical_topology="compute_star_graph",
+
                                                 logical_topology="compute_probabilistic_graph",
-                                                # logical_topology="probability_graph",
                                                 scheduling_algorithm=scheduling_algorithm,
                                                 utility=utility,
                                                 debug_level=DebugLevel.TRACE,

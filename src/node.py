@@ -51,6 +51,7 @@ class node:
         self.initial_bw = 0
         self.timestamp_now = 0
         self.time_global = 0
+        self.count_msgs = 0
 
 
         self.performance = NodePerformance(self.initial_cpu, self.initial_gpu, self.id)
@@ -263,6 +264,7 @@ class node:
 
         }
         
+        
         # if first_msg:
         #     for i in range(self.tot_nodes):
         #         topology = self.logical_topology.get_adjacency_matrix()
@@ -298,11 +300,14 @@ class node:
             self.print_node_state('[FORWARD]', bid = True, state= False, forward=True)
             # logging.log(TRACE, '[FORWARD]')
 
-            
+        if self.id == 2:
+            print('ktm')
         for i in range(self.tot_nodes):
             topology = self.logical_topology.get_adjacency_matrix()
             if self.id != i and topology[i][self.id]:
                 self.q[i].put(msg)
+                self.count_msgs+=1
+                
         
         #self.last_sent_msg[self.item['job_id']] = msg
 
@@ -1675,7 +1680,7 @@ class node:
         # if self.use_net_topology:
         #     timeout = 15
         # else:
-        timeout = 0.0000000001
+        timeout = 0.000000001
 
         ret_val = {}
         
@@ -1731,8 +1736,10 @@ class node:
                                 it = self.q[self.id].get(timeout=timeout)
                                 if self.bids[self.item['job_id']]['auction_id'] != it['auction_id']:
                                     consume = False
-                                    # if self.enable_logging:
-                                    #     print('consume', self.id, self.item['job_id'], self.bids[self.item['job_id']]['retry'])
+                                    self.item = it
+                                    
+                                    if self.enable_logging:
+                                        print('consume', self.id, self.item['job_id'], self.bids[self.item['job_id']]['retry'])
 
                         except Empty:
                             if len(items) == 0:
@@ -1908,12 +1915,14 @@ class node:
         _items = []
         # while True:
         try:
+            print('Extracting', self.id)
             if self.q[self.id].empty():
                 return None
             else:
                 # print(self.time_global, self.time_now, 'node', self.id, 'qlen:', self.q[self.id].qsize())
 
-                it = self.q[self.id].get(timeout=timeout)
+                # it = self.q[self.id].get(timeout=timeout)
+                it = self.q[self.id].get(timeout=1)
 
                 self.already_finished = False
                 if first:
