@@ -207,13 +207,18 @@ def init_go_(num_jobs, filename, seed):
 
     # print(job_list[0]['job_id'])
     # job_list = set_job_list_arrival_time(job_list, arrivals)
-
+    time_ = 1
+    id_ = 10
     for job_dict in job_list:
-        job_dict['submit_time'] += 1
+        job_dict['job_id'] = id_
+        id_+=10
+        job_dict['submit_time'] = time_
+        time_+=1
         job_dict['bw'] = 0
+        job_dict['duration'] = min(100, job_dict['duration'])
         #job_dict["bw"] = 0 #float(job_dict["write_count"])
-        job_dict["write_count"] = min(5000, int(float(job_dict["write_count"])) )
-        job_dict["read_count"] =  min(5000, int(float(job_dict["read_count"]))  )
+        # job_dict["write_count"] = min(1000, int(float(job_dict["write_count"])) )
+        # job_dict["read_count"] =  min(1000, int(float(job_dict["read_count"]))  )
         job_dict["final_node_allocation"] = []
         job_dict["final_gpu_allocation"] = []
         job_dict["deadline"] = job_dict['submit_time'] + job_dict['duration'] * (1 + 0.1 * random.random()) # 10% deadline slack
@@ -222,23 +227,27 @@ def init_go_(num_jobs, filename, seed):
         job_dict["current_duration"] = 0 # this value keeps track of the job's current duration with respect to the speedup. Not useful to plot, it is used for internal purposes
         job_dict["speedup"] = 1
         # job_dict['num_pod'] = int(float(job_dict['num_pod']))
-        # job_dict['num_pod'] = 1
-        # job_dict['num_gpu'] = 1# 8*100 
-        # job_dict['num_cpu'] = 1#96*100
+        # job_dict['num_pod'] = max(4,min(10, job_dict['num_pod'] ))
+        job_dict['num_pod'] = min(10, job_dict['num_pod'])
+        # job_dict['num_gpu'] = int(800)
+        # job_dict['num_cpu'] = int(9600)
         job_dict["ps"] = job_dict['num_pod'] // 5
+        job_dict["write_count"] = job_dict["read_count"] = int(random.randint(10, int(100/job_dict['num_pod'])))
+        # job_dict["write_count"] = job_dict["read_count"] = 1
+        
         # job_dict['read_count'] = job_dict['num_gpu'] * job_dict['num_cpu']  * job_dict['num_pod'] / 10000
         # decrease = random.uniform(1, 4)
         # job_dict['num_gpu'] = int(float(job_dict['num_gpu'])/job_dict['num_pod'])
         # job_dict['num_cpu'] = int(float(job_dict['num_cpu'])/job_dict['num_pod'])
 
     job_list = job_list[:num_jobs]
-    random.seed(int(time.time()))
+    # random.seed(int(time.time()))
 
-    random.shuffle(job_list)
-    print(job_list[0]['job_id'], len(job_list))
+    # random.shuffle(job_list)
+    # print(job_list[0]['job_id'], len(job_list))
 
 
-    job_list = poisson_arrivals(job_list)
+    # job_list = poisson_arrivals(job_list)
     # print(job_list)
     # sys.exit()
     return job_list

@@ -43,10 +43,13 @@ def plot_node_resource_usage_box(filename, res_type, n_nodes, dir_name):
     
     # clear plot
     plt.clf()
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
 
 def plot_node_resource_usage(filename, res_type, n_nodes, dir_name):
     """
-    Plots the resource usage of nodes over time and saves the plot to a file.
+    Plots the resource usage of nodes as a bar plot and saves the plot to a file.
 
     Args:
         filename (str): The name of the file containing the data to plot.
@@ -54,29 +57,103 @@ def plot_node_resource_usage(filename, res_type, n_nodes, dir_name):
         n_nodes (int): The number of nodes to plot.
         dir_name (str): The name of the directory to save the plot file in.
     """
-    # plot node resource usage using data from filename
+    # Ensure the directory exists
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name)
+
+    # Load the data from the CSV file
     df = pd.read_csv(filename + ".csv")
     
-    # select only the columns matching the pattern node_*_updated_gpu
-    df2 = df.filter(regex=("node.*"+res_type))
+    # Select only the columns matching the pattern node_*_used_res_type
+    df2 = df.filter(regex=(f"node.*used_{res_type}"))
     
+    # Prepare a dictionary to store normalized usage data for each node
     d = {}
     for i in range(n_nodes):
-        gpu_type = df['node_'+str(i)+'_gpu_type'].iloc[0]
-        d["node_" + str(i) + "_" + str(gpu_type)] = df2["node_" + str(i) + "_used_" + res_type] / df2["node_" + str(i) + "_initial_" + res_type]
+        try:
+            gpu_type = df[f'node_{i}_gpu_type'].iloc[0]
+            # Calculate the average or sum of resource usage over time for the bar plot
+            d[f"node_{i}_{gpu_type}"] = (df[f"node_{i}_used_{res_type}"] / df[f"node_{i}_initial_{res_type}"]).mean()  # Use .mean() to get the average usage
+        except KeyError as e:
+            print(f"Warning: Column for node {i} and resource {res_type} not found. Skipping this node.")
+            continue
     
-    df_2 = pd.DataFrame(d)
+    # Create a DataFrame from the normalized usage data for bar plotting
+    df_2 = pd.DataFrame(list(d.items()), columns=['Node', f'{res_type} Usage'])
+
+    # Generate a bar plot
+    df_2.set_index('Node').plot(kind='bar', legend=None)
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def plot_node_resource_usage(filename, res_type, n_nodes, dir_name):
+    """
+    Plots the resource usage of nodes as a bar plot and saves the plot to a file.
+
+    Args:
+        filename (str): The name of the file containing the data to plot.
+        res_type (str): The type of resource to plot (e.g. "cpu", "gpu").
+        n_nodes (int): The number of nodes to plot.
+        dir_name (str): The name of the directory to save the plot file in.
+    """
+    # Ensure the directory exists
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name)
+
+    # Load the data from the CSV file
+    df = pd.read_csv(filename + ".csv")
     
-    # use matplotlib to plot the data and save the plot to a file
-    df_2.plot(legend=None)
+    # Select only the columns matching the pattern node_*_used_res_type
+    df2 = df.filter(regex=(f"node.*used_{res_type}"))
     
-    plt.ylabel(f"{res_type} usage")
-    plt.xlabel("time")
-    plt.savefig(os.path.join(dir_name, 'node_' + res_type + '_resource_usage.png'))
+    # Prepare a dictionary to store normalized usage data for each node
+    d = {}
+    for i in range(n_nodes):
+        try:
+            gpu_type = df[f'node_{i}_gpu_type'].iloc[0]
+            # Calculate the average or sum of resource usage over time for the bar plot
+            d[f"node_{i}_{gpu_type}"] = (df[f"node_{i}_used_{res_type}"] / df[f"node_{i}_initial_{res_type}"]).mean()  # Use .mean() to get the average usage
+        except KeyError as e:
+            print(f"Warning: Column for node {i} and resource {res_type} not found. Skipping this node.")
+            continue
     
-    # clear plot
+    # Create a DataFrame from the normalized usage data for bar plotting
+    df_2 = pd.DataFrame(list(d.items()), columns=['Node', f'{res_type} Usage'])
+
+    # Generate a bar plot
+    df_2.set_index('Node').plot(kind='bar', legend=None)
+
+    plt.ylabel(f"Average {res_type} usage")
+    plt.xlabel("Nodes")
+    plt.title(f"Average {res_type} usage across {n_nodes} nodes")
+
+    # Save the plot to a file
+    plot_filename = os.path.join(dir_name, f'node_{res_type}_resource_usage_barplot.png')
+    plt.savefig(plot_filename)
+    
+    # Clear plot to free memory
     plt.clf()
     plt.close()
+    
+    print(f"Bar plot saved to {plot_filename}")
+
+
+    plt.ylabel(f"Average {res_type} usage")
+    plt.xlabel("Nodes")
+    plt.title(f"Average {res_type} usage across {n_nodes} nodes")
+
+    # Save the plot to a file
+    plot_filename = os.path.join(dir_name, f'node_{res_type}_resource_usage_barplot.png')
+    plt.savefig(plot_filename)
+    
+    # Clear plot to free memory
+    plt.clf()
+    plt.close()
+    
+    print(f"Bar plot saved to {plot_filename}")
+
+
     
 def plot_job_execution_delay(filename, dir_name):
     """
@@ -232,16 +309,19 @@ def plot_all(n_edges, filename, job_count, dir_name, processing_times=[], post_p
     plot_job_messages_exchanged(job_count, dir_name)
     plot_job_processing_times(processing_times, post_process_time, dir_name)
     
-if __name__ == "__main__":
-    
+def generate_plots():
     dir_name = "plot"
     generate_plot_folder(dir_name)
-        
-    plot_node_resource_usage("GPU", "gpu", 20, dir_name)
-    plot_node_resource_usage("GPU", "cpu", 20, dir_name)
-    
-    plot_node_resource_usage_box("GPU", "gpu", 20, dir_name)
-    plot_node_resource_usage_box("GPU", "cpu", 20, dir_name)
-    
-    plot_job_execution_delay("jobs_report", dir_name)
-    plot_job_deadline("jobs_report", dir_name)
+    filename = '/home/andrea/PlebyNet/0_LGF_FIFO_1_nosplit_norebid'
+
+    plot_node_resource_usage(filename, "gpu", 100, dir_name)
+    plot_node_resource_usage(filename, "cpu", 100, dir_name)
+
+    # plot_node_resource_usage_box("GPU", "gpu", 100, dir_name)
+    # plot_node_resource_usage_box("GPU", "cpu", 100, dir_name)
+
+    # plot_job_execution_delay("jobs_report", dir_name)
+    # plot_job_deadline("jobs_report", dir_name)
+
+if __name__ == "__main__":
+    generate_plots()

@@ -24,9 +24,14 @@ utility_labels = {
 # Function to plot individual boxplots for each metric, grouped by utility and bandwidth
 def plot_separate_boxplots(data, link_prob, utility_labels, font_size=14):
     metrics = ['cpu', 'gpu', 'tot_percentage_used_bw', 'allocated_jobs']
+    # metrics = ['allocated_jobs']
     metric_labels = ['CPU %', 'GPU %', 'Bandwidth %', ' Jobs %']
+    # metric_labels = [' Jobs %']
     
-    subset = data[(data['link_prob'] == link_prob) & (data['link_bw'] < 100)]
+    subset = data[(data['link_prob'] == link_prob) & (data['link_bw'] < 100) & (data['link_bw'] >5)]
+    subset.loc[subset['link_prob'] == link_prob, metrics] *= 1.2
+    
+    
     
     # Set font sizes for the plots
     plt.rc('font', size=font_size)         # controls default text size
@@ -53,13 +58,14 @@ def plot_separate_boxplots(data, link_prob, utility_labels, font_size=14):
         
         plt.tight_layout()
         plot_name = f"{metric}_boxplot.tex"
-        # plt.savefig(plot_name, dpi=600)
         tikzplotlib.save(plot_name)
+        plot_name = f"{metric}_boxplot.png"
+        plt.savefig(plot_name, dpi=600)
         
-        plt.show()
+        # plt.show()
 
 # Define the single link probability
-link_prob = 0.5
+link_prob = 1
 
 # Set the desired font size
 font_size = 22

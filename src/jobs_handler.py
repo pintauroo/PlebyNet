@@ -165,7 +165,7 @@ def message_data(job, deallocate=False, split=True, app_type=ApplicationGraphTyp
         "num_gpu": job['num_gpu'],
         "num_cpu": job['num_cpu'],
         "duration": job['duration'],
-        "N_layer": int(float(job['num_pod'])),
+        "N_layer": int(job['num_pod']),
         "N_layer_min": 1,
         "N_layer_max": min(int(float(job['num_pod'])), int(float(job['num_pod'])) if split else 1),
         "N_layer_bundle": 2,

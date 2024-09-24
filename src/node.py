@@ -22,13 +22,18 @@ import math
 
 TRACE = 5    
 
+class BandwidthAllocationError(Exception):
+    """Custom exception for bandwidth allocation issues."""
+    pass
+
 class InternalError(Exception):
     "Raised when the input value is less than 18"
     pass
 
 class node:
 
-    def __init__(self, id, gpu_type: GPUType, utility: Utility, alpha: float, enable_logging: bool, logical_topology, tot_nodes: int, progress_flag: bool, decrement_factor=0.00001):
+    # def __init__(self, id, max_bw: float, gpu_type: GPUType, utility: Utility, alpha: float, enable_logging: bool, logical_topology, tot_nodes: int, progress_flag: bool, decrement_factor=0.00001, with_bw = False):
+    def __init__(self, id, max_bw: float, utility: Utility, alpha: float, enable_logging: bool, logical_topology, tot_nodes: int, progress_flag: bool, decrement_factor=0.00001, with_bw = False):
         self.id = id    # unique edge node id
         # self.gpu_type = gpu_type
         self.gpu_type = GPUType.MISC
@@ -41,7 +46,7 @@ class node:
         self.progress_flag = progress_flag
         self.decrement_factor = decrement_factor
         
-        self.initial_cpu, self.initial_gpu = GPUSupport.get_compute_resources(gpu_type)
+        self.initial_cpu, self.initial_gpu = GPUSupport.get_compute_resources(self.gpu_type)
         # self.initial_cpu, self.initial_gpu = 200, 20
         self.initial_cpu *= 100
         self.initial_gpu *= 100
@@ -73,6 +78,7 @@ class node:
         self.cum_cpu_reserved = 0
         self.cum_gpu_reserved = 0
         self.cum_bw_reserved = 0
+        self.with_bw = with_bw
         
     
         
@@ -93,6 +99,27 @@ class node:
         self.item={}
         self.bids= {}
         self.layer_bid_already = {}
+        self.node_id = id
+        self.max_bw = max_bw
+        self.allocated_bw = 0.0  # Currently allocated bandwidth
+        self.communication_log = []  # To track communications with other nodes
+
+    def allocate_bandwidth(self, bw: float):
+        """
+        Allocate bandwidth to the node.
+
+        :param bw: Bandwidth to allocate.
+        :raises BandwidthAllocationError: If allocation exceeds node capacity.
+        """
+        if self.allocated_bw + bw > self.max_bw:
+            raise BandwidthAllocationError(
+                f"Node {self.node_id}: Allocation of {bw} exceeds maximum bandwidth {self.max_bw}."
+            )
+        self.allocated_bw += bw
+        # print(f"Node {self.node_id}: Allocated {bw} BW (Total Allocated: {self.allocated_bw}/{self.max_bw})")
+
+    def __repr__(self):
+        return f"Node(id={self.node_id}, allocated_bw={self.allocated_bw}/{self.max_bw})"
 
     def get_avail_gpu(self):
         return self.updated_gpu
@@ -267,7 +294,7 @@ class node:
         
         # if first_msg:
         #     for i in range(self.tot_nodes):
-        #         topology = self.logical_topology.get_adjacency_matrix()
+        #         topology = self.logical_topology.calculate_host_to_host_adjacency_matrix()
         #         if topology[i][self.id] and self.id != i:
         #         # if topology[i][self.id] and self.id != i and i != self.item['edge_id']:
         #             self.q[i].put(msg)
@@ -300,11 +327,11 @@ class node:
             self.print_node_state('[FORWARD]', bid = True, state= False, forward=True)
             # logging.log(TRACE, '[FORWARD]')
 
-        if self.id == 2:
-            print('ktm')
+
+        # topology = self.logical_topology.calculate_host_to_host_adjacency_matrix()
         for i in range(self.tot_nodes):
-            topology = self.logical_topology.get_adjacency_matrix()
-            if self.id != i and topology[i][self.id]:
+            # if self.id != i and topology[i][self.id]:
+            if self.id != i:
                 self.q[i].put(msg)
                 self.count_msgs+=1
                 
@@ -454,8 +481,12 @@ class node:
         return False
         
     def gang_schedule(self, count, start, bidtime, connected_to = None):
-             # gang schedule 
-            topoology = self.logical_topology.get_updated_bw_matrix().copy()
+            # self.with_bw = False
+            # gang schedule 
+            topoology = self.logical_topology.adj
+            # print(topoology)
+            # topoology = self.logical_topology.calculate_host_to_host_adjacency_matrix()
+            # topoology = self.logical_topology.get_updatede_bw_matrix().copy()
             # if start != 0  and \
             #     topoology[self.id][start-1] and \
             #     topoology[start-1][self.id]:
@@ -478,7 +509,13 @@ class node:
                         # for k in topoology[self.id]:
                         #     net_bid += k
                         net_bid = max(topoology[self.id])
-                    bid = res_bid * net_bid
+                        
+                    if self.with_bw:
+                        bid = int(res_bid * net_bid)
+                        # print('bids', self.id, 'bid', bid, res_bid, net_bid)
+                    else:
+                        bid = int(res_bid)
+                        
 
                     # if bid == 0:
                     #     return
@@ -513,38 +550,50 @@ class node:
 
     def count_layers(self):
         count = 0 
-        tmp_cpu = self.updated_cpu
-        tmp_gpu = self.updated_gpu
+        tmp_cpu = copy.deepcopy(self.updated_cpu)
+        tmp_gpu = copy.deepcopy(self.updated_gpu)
         first = True
-        
+        # self.with_bw = False
         if float('-inf') in self.bids[self.item['job_id']]['auction_id'] :
             start = self.bids[self.item['job_id']]['auction_id'].index(float('-inf'))
 
             for i in range(start, start + self.item['N_layer']):
                 # if not self.layer_bid_already[self.item['job_id']][i] \
+                    
+                if self.with_bw:
 
-                if self.item['NN_gpu'] <= tmp_gpu and\
-                    self.item['NN_cpu'] <= tmp_cpu:
-                    if start == 0:
-                        tmp_cpu-=self.item['NN_cpu']
-                        tmp_gpu-=self.item['NN_gpu']
-                        count+=1
-
-                    else:
-                        if first:
-                            topoology = self.logical_topology.get_updated_bw_matrix().copy()
-                            connected_to = self.bids[self.item['job_id']]['auction_id'][0]
-                            first = False
-                        if topoology[self.id][connected_to]>=self.item['read_count']:
-                            count+=1
+                    if self.item['NN_gpu'] <= tmp_gpu and\
+                        self.item['NN_cpu'] <= tmp_cpu:
+                        if start == 0:
                             tmp_cpu-=self.item['NN_cpu']
                             tmp_gpu-=self.item['NN_gpu']
-                            topoology[self.id][connected_to]-=self.item['read_count']
+                            count+=1
+
+                        else:
+                            if first:
+                                # topoology = self.logical_topology.get_updated_bw_matrix().copy()
+                                topoology = copy.deepcopy(self.logical_topology.adj)
+                                
+                                connected_to = self.bids[self.item['job_id']]['auction_id'][0]
+                                first = False
+                            if topoology[self.id][connected_to]>=self.item['read_count']:
+                                count+=1
+                                tmp_cpu-=self.item['NN_cpu']
+                                tmp_gpu-=self.item['NN_gpu']
+                                topoology[self.id][connected_to]-=self.item['read_count']
+                
+                else:
+                    if self.item['NN_gpu'] <= tmp_gpu and\
+                        self.item['NN_cpu'] <= tmp_cpu:
+                            tmp_cpu-=self.item['NN_cpu']
+                            tmp_gpu-=self.item['NN_gpu']
+                            count+=1
                         
         return count
 
     def bid_index(self, count, bidtime):
-        topoology = self.logical_topology.get_updated_bw_matrix()
+        # topoology = self.logical_topology.get_updated_bw_matrix()
+        topoology = self.logical_topology.adj
 
         if count>0 and float('-inf') in self.bids[self.item['job_id']]['auction_id']:
             start = self.bids[self.item['job_id']]['auction_id'].index(float('-inf'))
@@ -1738,8 +1787,8 @@ class node:
                                     consume = False
                                     self.item = it
                                     
-                                    if self.enable_logging:
-                                        print('consume', self.id, self.item['job_id'], self.bids[self.item['job_id']]['retry'])
+                                    # if self.enable_logging:
+                                    #     print('consume', self.id, self.item['job_id'], self.bids[self.item['job_id']]['retry'])
 
                         except Empty:
                             if len(items) == 0:

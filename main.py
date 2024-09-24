@@ -24,7 +24,8 @@ from src.dataset_loader import init_go_
 
 
 if __name__ == '__main__':
-    NUM_JOBS = 35 #args.num_jobs
+    # NUM_JOBS = 35 #args.num_jobs
+    NUM_JOBS = 100 #args.num_jobs
     NUM_NODES = 100
     n_failure = 0
     
@@ -91,12 +92,14 @@ if __name__ == '__main__':
 
     
     dataset_plebi = pd.DataFrame(dataset[:NUM_JOBS])
+    # print(dataset_plebi)
     dataset_plebi.to_csv('MISC.csv')
     # dataset_plebi = dataset_plebi.sort_values(by=['num_pod', 'job_id'])
     # if (dataset_plebi['num_gpu']*dataset_plebi['num_pod']).sum()/100 > 8 * NUM_NODES:
-    print((dataset_plebi['num_gpu']*dataset_plebi['num_pod']).sum()/100, 8 * NUM_NODES)
-    print((dataset_plebi['num_cpu']*dataset_plebi['num_pod']).sum()/100, 96 * NUM_NODES)
-    print(dataset_plebi['num_pod'].sum(), NUM_JOBS)
+    # print((dataset_plebi['num_gpu']*dataset_plebi['num_pod']).sum()/100, 8 * NUM_NODES)
+    # print((dataset_plebi['num_cpu']*dataset_plebi['num_pod']).sum()/100, 96 * NUM_NODES)
+    print(dataset_plebi)
+    print(dataset_plebi['num_pod'])
     
     # dataset = generate_dataset(entries_num=NUM_JOBS)
     # failures = generate_node_failures(n_nodes, n_failure, NUM_JOBS)
@@ -154,8 +157,10 @@ if __name__ == '__main__':
     # utils = ["UTIL", "SGF"]
     # sched = ['FIFO', 'SDF'] 
     # utils = ['LGF']
-    utils = ['UTIL', 'SGF', 'LGF']
-    # utils = ['LGF']
+    # utils = ['UTIL', 'SGF', 'LGF']
+    utils = ['LGF']
+    # utils = ['SGF']
+    # utils = ['UTIL']
 
     sched = ['FIFO'] 
     # utils = ['SGF']
@@ -168,8 +173,10 @@ if __name__ == '__main__':
     probability = [0.5 + i * 0.1 for i in range(int((1.0 - 0.5) / 0.1) + 1)]
     # probability = [0.3]
     # bw = [2000, 4000, 8000, 16000, 32000, 64000, 128000]
-    bw = [5000, 10000, 20000, 40000, 80000, 100000, 128000]
-    # bw = [1111110000]
+    # bw = [5000, 10000, 20000, 40000, 80000, 100000, 128000]
+    bw = [1000]
+    with_bw = False
+    with_bw = True
 
     for u in utils:
         utility = getattr(Utility, u, None)
@@ -190,7 +197,7 @@ if __name__ == '__main__':
             for sp in split:
                 for rb in rebid:
                     for b in bw:
-                        for prob in probability:
+                        # for prob in probability:
                             simulator = Simulator_Plebiscito(filename=rep,
                                                 n_nodes=NUM_NODES,
                                                 n_jobs=NUM_JOBS,
@@ -199,18 +206,21 @@ if __name__ == '__main__':
                                                 # logical_topology="ring_graph",
                                                 # logical_topology="compute_ring_graph",
                                                 # logical_topology="compute_star_graph",
+                                                # logical_topology="compute_probabilistic_graph",
 
-                                                logical_topology="compute_probabilistic_graph",
+                                                logical_topology="compute_complete_graph",
                                                 scheduling_algorithm=scheduling_algorithm,
                                                 utility=utility,
                                                 debug_level=DebugLevel.TRACE,
                                                 # enable_logging=True,
                                                 split=sp,
                                                 enable_post_allocation=rb,
+                                                
                                                 # decrement_factor=dc,
                                                 # probability=1,
-                                                probability=prob,
-                                                max_bw=b
+                                                # probability=prob,
+                                                max_bw=b,
+                                                with_bw = with_bw
                                                 )
                             simulator.run()
                             simulator.save_res('results.csv', rep)
@@ -221,6 +231,11 @@ if __name__ == '__main__':
     # simulator_kubernetes = KubernetesScheduler(nodes, dataset, "kubernetes", ApplicationGraphType.LINEAR, True, adj, failures)
     
 
+    # The value `9600` is being used as the number of CPUs in a job. It is a
+    # parameter that represents the number of CPUs allocated to a specific
+    # job in the system. This value is used in the job scheduling and
+    # resource allocation process to determine the resource requirements of
+    # the job.
     
     # simulator_kubernetes.run()
     

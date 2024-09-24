@@ -154,6 +154,7 @@ def calculate_utility(nodes, num_edges, jobs, time_instant, filename, gpu_types,
                 for n in nodes:
                     if j in n.bids:
                         print(f"Node: {n.id}: {n.bids[j]['auction_id']}")
+                        break
                 # something bad happened
                 break
             

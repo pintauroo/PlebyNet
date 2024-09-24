@@ -32,9 +32,15 @@ class Topology:
             self.adjacency_matrix = self.compute_probabilistic_graph()
         else:
             raise ValueError("Invalid topology function name")
-        
-        self.bandwidth_matrix = self.adjacency_matrix.copy() 
-        self.bandwidth_matrix = self.adjacency_matrix * self.b
+        self.bandwidth_matrix = self.adjacency_matrix * self.b 
+        # self.bandwidth_matrix = self.adjacency_matrix.copy() 
+        # self.bandwidth_matrix = (self.adjacency_matrix * self.b *[1,2,3]).transpose()
+        # self.bandwidth_matrix = self.bandwidth_matrix.T
+        # for i in range(self.n):
+        #     increment = self.b * (i + 1)  # Increment bandwidth based on node index
+        #     self.bandwidth_matrix[i, :] *= increment
+        #     self.bandwidth_matrix[:, i] *= increment 
+            
         self.bandwidth_matrix_updated = self.bandwidth_matrix.copy()
         
         np.savetxt('topology.csv', self.adjacency_matrix, delimiter=',', fmt='%d')
@@ -88,8 +94,37 @@ class Topology:
 
     def restore_updated_topo(self, topo):
         self.bandwidth_matrix_updated = copy.deepcopy(topo)
-    
         
+    def print_updated_matrix(self):
+        for i in self.bandwidth_matrix:
+            print(i)
+    
+    def calculate_average_link_utilization(self):
+
+
+            
+            
+        
+        total_links = np.sum(self.bandwidth_matrix> 0)
+        print(total_links, len(self.bandwidth_matrix))
+        
+        # Calculate the bandwidth used on each link
+        used_bandwidth_matrix = self.bandwidth_matrix - self.bandwidth_matrix_updated
+        
+        # Calculate per-link utilization
+        utilization_matrix = np.zeros_like(self.bandwidth_matrix)
+        
+        # Only calculate utilization where there was initial bandwidth (to avoid divide by zero)
+        non_zero_initial = self.bandwidth_matrix > 0
+        utilization_matrix[non_zero_initial] = used_bandwidth_matrix[non_zero_initial] / self.bandwidth_matrix[non_zero_initial]
+        highest_utilization = np.max(utilization_matrix, axis=0)  # Taking max across each link
+
+        print(highest_utilization*100)
+        # Calculate the average utilization across all links with initial bandwidth
+        average_utilization = np.sum(highest_utilization) / len(self.bandwidth_matrix)
+        
+        return average_utilization*100
+
 
 
     # Function to increase the value for the local copy of the topology given two indexes
@@ -131,23 +166,56 @@ class Topology:
         if (tmp_topo[node1][node2] >= bandwidth and 
             tmp_topo[node2][node1] >= bandwidth):
 
-            tmp_topo[node1][node2] -= bandwidth
-            tmp_topo[node2][node1] -= bandwidth
+            # tmp_topo[node1][node2] -= bandwidth
+            # tmp_topo[node2][node1] -= bandwidth
 
             # Adjust the bandwidth for all other connections of node1 and node2
             for i in range(self.n):
-                if i != node1 and i != node2:
-                    tmp_topo[node1][i] = max(0, tmp_topo[node1][i] - bandwidth)
-                    tmp_topo[i][node1] = max(0, tmp_topo[i][node1] - bandwidth)
-                    tmp_topo[node2][i] = max(0, tmp_topo[node2][i] - bandwidth)
-                    tmp_topo[i][node2] = max(0, tmp_topo[i][node2] - bandwidth)
+                for j in range(self.n):
+                    if i!=j:
+                        # tmp_topo[i][j] = max(0, tmp_topo[i][j] - bandwidth)
+                        tmp_topo[i][j] = tmp_topo[i][j] - bandwidth
+                    
+                # if i != node1 and i != node2:
+                #     tmp_topo[node1][i] = max(0, tmp_topo[node1][i] - bandwidth)
+                #     tmp_topo[i][node1] = max(0, tmp_topo[i][node1] - bandwidth)
+                #     tmp_topo[node2][i] = max(0, tmp_topo[node2][i] - bandwidth)
+                #     tmp_topo[i][node2] = max(0, tmp_topo[i][node2] - bandwidth)
             
             print(f"Allocated {bandwidth} bandwidth between node {node1} and node {node2}")
             return True
         else:
             print(f"Insufficient bandwidth to allocate {bandwidth} between node {node1} and node {node2}")
             return False
+        
+        
 
+
+    def allocate_NO_constraint_bandwidth(self, node1, node2, bandwidth, tmp_topo=None):
+        if tmp_topo is None:
+            tmp_topo = self.bandwidth_matrix_updated
+        # Allocate the bandwidth between node1 and node2
+        for i in range(self.n):
+                for j in range(self.n):
+                    if i!=j:
+                        # tmp_topo[i][j] = max(0, tmp_topo[i][j] - bandwidth)
+                        tmp_topo[i][j] = tmp_topo[i][j] - bandwidth
+       
+
+        # tmp_topo[node1][node2] -= bandwidth
+        # tmp_topo[node2][node1] -= bandwidth
+
+        # # Adjust the bandwidth for all other connections of node1 and node2
+        # for i in range(self.n):
+        #     if i != node1 and i != node2:
+        #         tmp_topo[node1][i] = max(0, tmp_topo[node1][i] - bandwidth)
+        #         tmp_topo[i][node1] = max(0, tmp_topo[i][node1] - bandwidth)
+        #         tmp_topo[node2][i] = max(0, tmp_topo[node2][i] - bandwidth)
+        #         tmp_topo[i][node2] = max(0, tmp_topo[i][node2] - bandwidth)
+        
+        print(f"Allocated {bandwidth} bandwidth between node {node1} and node {node2}")
+        return True
+      
     def compute_linear_topology(self):
         adjacency_matrix = np.zeros((self.n, self.n))
         for i in range(self.n):
@@ -259,8 +327,15 @@ class Topology:
         plt.grid(True)
         plt.savefig('plot_occupied_bandwidth.png')
 
-# Example usage:
-# topo = Topology('compute_linear_topology', 10, 1, 5, 5)
-# print(topo.get_local_matrix())
-# topo.increase_value(0, 1, 5)
-# print(topo.get_local_matrix())
+# # Example usage:
+# topo = Topology('compute_complete_graph', 10, 10)
+# # print(topo.get_adjacency_matrix())
+# t= topo.get_updated_bw_matrix()
+# for i in t:
+#     print(i)
+
+# topo.allocate_bandwidth(0, 1, 10)
+
+# t= topo.get_updated_bw_matrix()
+# for i in t:
+#     print(i)
