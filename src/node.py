@@ -273,7 +273,7 @@ class node:
     def forward_to_neighbohors(self, custom_dict=None, resend_bid=False, first_msg=False):            
         msg = {
             "job_id": self.item['job_id'], 
-            "user": self.item['user'],
+            # "user": self.item['user'],
             "edge_id": self.id, 
             "NN_gpu": self.item['NN_gpu'],
             "NN_cpu": self.item['NN_cpu'],

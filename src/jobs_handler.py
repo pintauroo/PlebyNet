@@ -161,7 +161,7 @@ def message_data(job, deallocate=False, split=True, app_type=ApplicationGraphTyp
 
     data = {
         "job_id": job['job_id'],
-        "user": job['user'],
+        # "user": job['user'],
         "num_gpu": job['num_gpu'],
         "num_cpu": job['num_cpu'],
         "duration": job['duration'],

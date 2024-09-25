@@ -34,11 +34,12 @@ class SpineLeafTopology:
         for leaf in leaf_switches:
             for _ in range(num_hosts_per_leaf):
                 host = f"H{host_id}"
-                G.add_node(host, type='host', reserved_bw=0)  # Initialize reserved_bw for host nodes
+                G.add_node(host, type='host', bandwidth=link_bw_leaf_to_node, reserved_bw=0)  # Assign default bandwidth for host nodes
                 G.add_edge(leaf, host, bandwidth=link_bw_leaf_to_node, reserved_bw=0)  # Link bw from host to leaf
                 host_id += 1
 
         return G
+
         
     def format_node_ids(self, node_ids):
         # Ensure node_ids is a list of strings prefixed with 'H'
@@ -47,74 +48,76 @@ class SpineLeafTopology:
     def allocate_ps_to_workers(self, ps_node, worker_nodes, required_bw, allow_oversubscription=False):
         """
         Allocate bandwidth between a parameter server (PS) and a list of worker nodes.
-        Prevent allocation if bandwidth does not fit and oversubscription is disabled.
-        Update bandwidth at the switches only once.
+        Reduce bandwidth for each worker independently, even if they share paths through the same switch.
         """
-
-
-        # Example usage:
-        print('ps_node', ps_node)
         ps_node = self.format_node_ids(ps_node)[0]  # Convert 0 to "H0"
-        worker_nodes = self.format_node_ids(worker_nodes)  
+        worker_nodes = self.format_node_ids(worker_nodes)
         paths = {}
-        allocated_edges = []  # Track which edges have been allocated to roll back if necessary
-        allocated_nodes = set()  # Track which nodes have been updated to avoid double updating
+        cumulative_node_bw = {}
+        cumulative_edge_bw = {}
+        allocated_nodes = set()
+        allocated_edges = []
+        rollback = False
 
-        # First, check if enough bandwidth is available for all workers
+        # First, check cumulative bandwidth requirements
         for worker in worker_nodes:
-            if ps_node != worker:
-                try:
-                    path = nx.shortest_path(self.G, source=ps_node, target=worker)
-                    paths[worker] = path  # Store the path for this worker
-                    print(f"Checking path from PS {ps_node} to worker {worker}: {path}")
+            if ps_node == worker:
+                print(f"Skipping allocation for PS {ps_node} and worker {worker} as they are on the same node.")
+                continue  # Skip allocation if PS and worker are the same node
 
-                    # Check bandwidth availability on each link in the path
-                    for i in range(len(path) - 1):
-                        u, v = path[i], path[i + 1]
-                        available_bw = self.G[u][v]['bandwidth'] - self.G[u][v]['reserved_bw']
-                        if available_bw < required_bw:
-                            if not allow_oversubscription:
-                                print(f"Not enough bandwidth on link {u}-{v}. Available: {available_bw} Gbps, Required: {required_bw} Gbps")
-                                return False  # Abort if any link lacks sufficient bandwidth and oversubscription is not allowed
+            try:
+                path = nx.shortest_path(self.G, source=ps_node, target=worker)
+                paths[worker] = path
+                print(f"Checking path from PS {ps_node} to worker {worker}: {path}")
 
-                except nx.NetworkXNoPath:
-                    print(f"No path found between PS {ps_node} and worker {worker}.")
-                    return False
+                # Accumulate node-level bandwidth requirements
+                for node in path:
+                    if self.G.nodes[node]['type'] in ['spine', 'leaf']:
+                        cumulative_node_bw[node] = cumulative_node_bw.get(node, 0) + required_bw
+                        total_reserved_bw = self.G.nodes[node]['reserved_bw'] + cumulative_node_bw[node]
+                        if total_reserved_bw > self.G.nodes[node]['bandwidth']:
+                            print(f"Not enough bandwidth on node {node}. Available: {self.G.nodes[node]['bandwidth'] - self.G.nodes[node]['reserved_bw']} Gbps, Required: {cumulative_node_bw[node]} Gbps")
+                            return False
 
-        # If bandwidth is available on all paths, proceed to allocate
-        for worker, path in paths.items():
-            for i in range(len(path) - 1):
-                u, v = path[i], path[i + 1]
+                # Accumulate edge-level bandwidth requirements
+                for i in range(len(path) - 1):
+                    u, v = path[i], path[i + 1]
+                    edge = (u, v) if (u, v) in self.G.edges else (v, u)
+                    cumulative_edge_bw[edge] = cumulative_edge_bw.get(edge, 0) + required_bw
+                    total_reserved_bw = self.G[u][v]['reserved_bw'] + cumulative_edge_bw[edge]
+                    if total_reserved_bw > self.G[u][v]['bandwidth']:
+                        if not allow_oversubscription:
+                            print(f"Not enough bandwidth on link {u}-{v}. Available: {self.G[u][v]['bandwidth'] - self.G[u][v]['reserved_bw']} Gbps, Required: {cumulative_edge_bw[edge]} Gbps")
+                            return False
+
+            except nx.NetworkXNoPath:
+                print(f"No path found between PS {ps_node} and worker {worker}.")
+                return False
+
+        # If bandwidth is available, reserve it
+        for worker in worker_nodes:
+            if ps_node == worker:
+                continue  # Skip reservation if PS and worker are the same node
+
+            # Reserve bandwidth at the switches (spine/leaf switches in the path)
+            for node in paths[worker]:
+                if self.G.nodes[node]['type'] in ['spine', 'leaf']:
+                    self.G.nodes[node]['reserved_bw'] += required_bw
+                    allocated_nodes.add(node)
+
+            # Reserve bandwidth at the edges (links)
+            for i in range(len(paths[worker]) - 1):
+                u, v = paths[worker][i], paths[worker][i + 1]
                 self.G[u][v]['reserved_bw'] += required_bw
                 allocated_edges.append((u, v))
 
-                # Only update node reserved_bw once per node, and only if it hasn't been updated already
-                if u not in allocated_nodes:
-                    self.G.nodes[u]['reserved_bw'] += required_bw
-                    allocated_nodes.add(u)
-                if v not in allocated_nodes:
-                    self.G.nodes[v]['reserved_bw'] += required_bw
-                    allocated_nodes.add(v)
-
-                remaining_bw = self.G[u][v]['bandwidth'] - self.G[u][v]['reserved_bw']
-                if remaining_bw < 0:
-                    if allow_oversubscription:
-                        print(f"Allocated with oversubscription. Remaining bandwidth is negative: {remaining_bw} Gbps on link {u}-{v}")
-                    else:
-                        print(f"Allocation failed: insufficient bandwidth on link {u}-{v} without oversubscription")
-                        # Rollback any allocations made before this failure
-                        for edge in allocated_edges:
-                            u, v = edge
-                            self.G[u][v]['reserved_bw'] -= required_bw
-                        for node in allocated_nodes:
-                            self.G.nodes[node]['reserved_bw'] -= required_bw
-                        return False
-
-        # Store the allocated paths for later deallocation
+        # Allocation successful
         self.allocated_paths[(ps_node, tuple(worker_nodes))] = paths
         print('Allocation successful!')
         self.adj = self.calculate_host_to_host_adjacency_matrix()
-        return True  # Allocation successful
+        return True
+
+
 
     def deallocate_ps_from_workers(self, ps_node, worker_nodes, required_bw):
         """
@@ -122,8 +125,9 @@ class SpineLeafTopology:
         It reverses the bandwidth reservation along the stored paths.
         """
         ps_node = self.format_node_ids(ps_node)[0]  # Convert 0 to "H0"
-        worker_nodes = self.format_node_ids(worker_nodes)  
+        worker_nodes = self.format_node_ids(worker_nodes)
         key = (ps_node, tuple(worker_nodes))
+        
         if key not in self.allocated_paths:
             print(f"No allocation found for PS {ps_node} to workers {worker_nodes}.")
             return False  # No allocation to deallocate
@@ -131,23 +135,37 @@ class SpineLeafTopology:
         # Get the stored paths for this allocation
         paths = self.allocated_paths[key]
 
+        # 1. Deallocate bandwidth at the switches (spine and leaf switches)
         for worker, path in paths.items():
+            if ps_node == worker:
+                print(f"Skipping deallocation for PS {ps_node} and worker {worker} as they are on the same node.")
+                continue  # Skip deallocation if PS and worker are the same node
+
+            for i in range(len(path)):
+                node = path[i]
+                if self.G.nodes[node]['type'] in ['spine', 'leaf']:
+                    self.G.nodes[node]['reserved_bw'] -= required_bw
+                    self.G.nodes[node]['reserved_bw'] = max(self.G.nodes[node]['reserved_bw'], 0)  # Ensure no negative values
+
+        # 2. Deallocate bandwidth at the edges (links)
+        for worker, path in paths.items():
+            if ps_node == worker:
+                continue  # Skip deallocation if PS and worker are the same node
+
             for i in range(len(path) - 1):
                 u, v = path[i], path[i + 1]
                 self.G[u][v]['reserved_bw'] -= required_bw
-                self.G[u][v]['reserved_bw'] = max(self.G[u][v]['reserved_bw'], 0)  # Ensure no negative bandwidth
-
-                # Only update node reserved_bw once per node, and only if it hasn't been updated already
-                self.G.nodes[u]['reserved_bw'] -= required_bw
-                self.G.nodes[v]['reserved_bw'] -= required_bw
-                self.G.nodes[u]['reserved_bw'] = max(self.G.nodes[u]['reserved_bw'], 0)
-                self.G.nodes[v]['reserved_bw'] = max(self.G.nodes[v]['reserved_bw'], 0)
+                self.G[u][v]['reserved_bw'] = max(self.G[u][v]['reserved_bw'], 0)  # Ensure no negative values
 
         # Remove the stored paths after deallocation
         del self.allocated_paths[key]
         print(f"Deallocation successful for PS {ps_node} and workers {worker_nodes}!")
+
+        # Recalculate the adjacency matrix after deallocation
         self.adj = self.calculate_host_to_host_adjacency_matrix()
         return True
+
+
 
     def calculate_host_to_host_adjacency_matrix(self):
         """
@@ -246,7 +264,7 @@ if __name__ == "__main__":
     num_hosts_per_leaf = 8  # 6 leaves * 8 hosts = 48 servers
 
     # Bandwidth values in Gbps
-    spine_bandwidth = 100  # Uplinks to spine (100 Gbps)
+    spine_bandwidth = 200  # Uplinks to spine (100 Gbps)
     leaf_bandwidth = 400   # Leaf switches with 4x 100 Gbps uplinks = 400 Gbps
     link_bw_leaf_to_node = 100  # 25 Gbps from leaf to node
     link_bw_leaf_to_spine = 100  # 100 Gbps uplinks to spine
@@ -259,8 +277,11 @@ if __name__ == "__main__":
 
     # Example of using the class to allocate bandwidth
     ps_node = "0"
-    worker_nodes = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
-    topology.allocate_ps_to_workers(ps_node, worker_nodes, 10)
+    # worker_nodes = ["10","20","30","40"]
+    worker_nodes = ["10","20"]
+    topology.allocate_ps_to_workers(ps_node, worker_nodes, 25)
+
+
 
     # Deallocate bandwidth after usage
     # topology.deallocate_ps_from_workers(ps_node, worker_nodes, 50)

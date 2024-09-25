@@ -5,6 +5,8 @@ import numpy as np
 import random
 import os
 
+import pandas as pd
+
 def set_job_list_arrival_time(job_list, arrival_rate=None, interval=60, shuffle_order=False):
     """
     job_list: jobs to execute in this run
@@ -198,9 +200,22 @@ def init_go_(num_jobs, filename, seed):
     np.random.seed(int(seed))
     # current_directory = os.getcwd()
     # csv_file=current_directory+'/traces/'+filename
-    csv_file = '/home/andrea/PlebyNet/traces/pai/df_dataset.csv'
-    # csv_file=str(current_directory)+'/traces/pai/pai_job_no_estimate_100K.csv'
-    job_list = add_job(csv_file, None, limit=num_jobs)
+    # csv_file = '/home/andrea/PlebyNet/traces/pai/df_dataset.csv'
+    csv_file='/home/andrea/PlebyNet/traces/cleaned_dfws.csv'
+    jobs = pd.read_csv(csv_file)
+    jobs.rename(columns={'runtime': 'duration'}, inplace=True)
+    jobs.rename(columns={'inst_num': 'num_pod'}, inplace=True)
+    jobs.rename(columns={'net_read': 'read_count'}, inplace=True)
+    jobs.rename(columns={'net_write': 'write_count'}, inplace=True)
+    jobs.rename(columns={'plan_cpu': 'num_cpu'}, inplace=True)
+    jobs.rename(columns={'plan_gpu': 'num_gpu'}, inplace=True)
+    jobs['write_count'] = jobs['write_count'].astype(int)  # Truncates decimals
+    jobs['read_count'] = jobs['read_count'].astype(int)    # Truncates decimals
+    jobs = jobs[jobs['write_count'] * jobs['num_pod'] <= 100]
+
+    job_list = jobs.to_dict(orient='records')
+
+    # job_list = add_job(csv_file, None, limit=num_jobs)
     # print('job_list size:')
     # print(len(job_list))
     # if (num_jobs is not None) and num_jobs <= len(job_list):
@@ -210,12 +225,13 @@ def init_go_(num_jobs, filename, seed):
     time_ = 1
     id_ = 10
     for job_dict in job_list:
+        # print(job_dict)
         job_dict['job_id'] = id_
         id_+=10
         job_dict['submit_time'] = time_
         time_+=1
         job_dict['bw'] = 0
-        job_dict['duration'] = min(100, job_dict['duration'])
+        # job_dict['duration'] = min(10, job_dict['duration'])
         #job_dict["bw"] = 0 #float(job_dict["write_count"])
         # job_dict["write_count"] = min(1000, int(float(job_dict["write_count"])) )
         # job_dict["read_count"] =  min(1000, int(float(job_dict["read_count"]))  )
@@ -226,13 +242,13 @@ def init_go_(num_jobs, filename, seed):
         job_dict["complete_time"] = 0
         job_dict["current_duration"] = 0 # this value keeps track of the job's current duration with respect to the speedup. Not useful to plot, it is used for internal purposes
         job_dict["speedup"] = 1
-        # job_dict['num_pod'] = int(float(job_dict['num_pod']))
+        # job_dict['num_pod'] = job_dict['num_pod'] if job_dict['num_pod'] * job_dict["read_count"] <= 100 else: 3
         # job_dict['num_pod'] = max(4,min(10, job_dict['num_pod'] ))
-        job_dict['num_pod'] = min(10, job_dict['num_pod'])
+        # job_dict['num_pod'] = min(10, job_dict['num_pod'])
         # job_dict['num_gpu'] = int(800)
         # job_dict['num_cpu'] = int(9600)
         job_dict["ps"] = job_dict['num_pod'] // 5
-        job_dict["write_count"] = job_dict["read_count"] = int(random.randint(10, int(100/job_dict['num_pod'])))
+        # job_dict["write_count"] = job_dict["read_count"] = int(random.randint(10, int(100/job_dict['num_pod'])))
         # job_dict["write_count"] = job_dict["read_count"] = 1
         
         # job_dict['read_count'] = job_dict['num_gpu'] * job_dict['num_cpu']  * job_dict['num_pod'] / 10000
@@ -247,7 +263,7 @@ def init_go_(num_jobs, filename, seed):
     # print(job_list[0]['job_id'], len(job_list))
 
 
-    # job_list = poisson_arrivals(job_list)
+    job_list = poisson_arrivals(job_list)
     # print(job_list)
     # sys.exit()
     return job_list

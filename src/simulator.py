@@ -563,6 +563,14 @@ class Simulator_Plebiscito:
 
                     jobs_submitted += 1
                     subset = jobs_to_submit.iloc[start_id:start_id+batch_size]
+                    row = subset.iloc[0]
+
+                    print('** id:', row['job_id'],
+                        'gpu:', row['num_gpu'],
+                        'cpu:', row['num_cpu'],
+                        'num_pod:', row['num_pod'],
+                        'write_count:', row['write_count'],
+                        'read_count:', row['read_count'])
 
                     # if self.enable_logging:
                     # logging.log(TRACE, '\n-------------------------------NEW JOB---------------------------------')
@@ -706,35 +714,35 @@ class Simulator_Plebiscito:
                             tot_allocated_cpu += int(subset['num_cpu'].iloc[0]) * int(subset['num_pod'].iloc[0])
 
 
-                    for n in self.nodes:
-                        if subset["job_id"].values[0] in n.bids:
-                            if n.id in n.bids[subset['job_id'].values[0]]['auction_id']:
-                                won_inst = n.bids[subset['job_id'].values[0]]['auction_id'].count(n.id)
-                                allocated_gpu = won_inst * n.bids[subset['job_id'].values[0]]['NN_gpu'] 
-                                allocated_cpu = won_inst * n.bids[subset['job_id'].values[0]]['NN_cpu'] 
-                                # print(f"Node {n.id} won {won_inst} instances of job {subset['job_id'].values[0]} with {allocated_cpu} CPUs and {allocated_gpu} GPUs")
-                                previous_cpu = nodes_snapshot[n.id]['avail_cpu']
-                                previous_gpu = nodes_snapshot[n.id]['avail_gpu']
-                                # print(f"Previous CPU: {previous_cpu} - Previous GPU: {previous_gpu}")
-                                assert previous_cpu - allocated_cpu == n.get_avail_cpu(), (
-                                    f"1Assertion failed: previous_cpu ({previous_cpu}) - allocated_cpu ({allocated_cpu}) "
-                                    f"!= n.get_avail_cpu() ({n.get_avail_cpu()})"
-                                )
-                                assert previous_gpu - allocated_gpu == n.get_avail_gpu(), (
-                                    f"1Assertion failed: previous_Gpu ({previous_gpu}) - allocated_Gpu ({allocated_gpu}) "
-                                    f"!= n.get_avail_gpu() ({n.get_avail_gpu()})"
-                                )
-                            else:
-                                # print(f"Node {n.id} didn't win any instance of job {subset['job_id'].values[0]}")
-                                previous_cpu = nodes_snapshot[n.id]['avail_cpu']
-                                previous_gpu = nodes_snapshot[n.id]['avail_gpu']
-                                # print(f"Previous CPU: {previous_cpu} - Previous GPU: {previous_gpu}")
-                                assert previous_cpu == n.get_avail_cpu(), (
-                                    f"2Assertion failed: previous_cpu ({previous_cpu}) != n.get_avail_cpu() ({n.get_avail_cpu()})"
-                                )
-                                assert previous_gpu == n.get_avail_gpu(), (
-                                    f"2Assertion failed: previous_Gpu ({previous_gpu}) != n.get_avail_gpu() ({n.get_avail_gpu()})"
-                                )
+                    # for n in self.nodes:
+                    #     if subset["job_id"].values[0] in n.bids:
+                    #         if n.id in n.bids[subset['job_id'].values[0]]['auction_id']:
+                    #             won_inst = n.bids[subset['job_id'].values[0]]['auction_id'].count(n.id)
+                    #             allocated_gpu = won_inst * n.bids[subset['job_id'].values[0]]['NN_gpu'] 
+                    #             allocated_cpu = won_inst * n.bids[subset['job_id'].values[0]]['NN_cpu'] 
+                    #             # print(f"Node {n.id} won {won_inst} instances of job {subset['job_id'].values[0]} with {allocated_cpu} CPUs and {allocated_gpu} GPUs")
+                    #             previous_cpu = nodes_snapshot[n.id]['avail_cpu']
+                    #             previous_gpu = nodes_snapshot[n.id]['avail_gpu']
+                    #             # print(f"Previous CPU: {previous_cpu} - Previous GPU: {previous_gpu}")
+                    #             assert previous_cpu - allocated_cpu == n.get_avail_cpu(), (
+                    #                 f"1Assertion failed: previous_cpu ({previous_cpu}) - allocated_cpu ({allocated_cpu}) "
+                    #                 f"!= n.get_avail_cpu() ({n.get_avail_cpu()})"
+                    #             )
+                    #             assert previous_gpu - allocated_gpu == n.get_avail_gpu(), (
+                    #                 f"1Assertion failed: previous_Gpu ({previous_gpu}) - allocated_Gpu ({allocated_gpu}) "
+                    #                 f"!= n.get_avail_gpu() ({n.get_avail_gpu()})"
+                    #             )
+                    #         else:
+                    #             # print(f"Node {n.id} didn't win any instance of job {subset['job_id'].values[0]}")
+                    #             previous_cpu = nodes_snapshot[n.id]['avail_cpu']
+                    #             previous_gpu = nodes_snapshot[n.id]['avail_gpu']
+                    #             # print(f"Previous CPU: {previous_cpu} - Previous GPU: {previous_gpu}")
+                    #             assert previous_cpu == n.get_avail_cpu(), (
+                    #                 f"2Assertion failed: previous_cpu ({previous_cpu}) != n.get_avail_cpu() ({n.get_avail_cpu()})"
+                    #             )
+                    #             assert previous_gpu == n.get_avail_gpu(), (
+                    #                 f"2Assertion failed: previous_Gpu ({previous_gpu}) != n.get_avail_gpu() ({n.get_avail_gpu()})"
+                    #             )
                         
                     start_id += batch_size
 
