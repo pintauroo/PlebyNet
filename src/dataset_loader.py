@@ -203,16 +203,21 @@ def init_go_(num_jobs, filename, seed):
     # csv_file = '/home/andrea/PlebyNet/traces/pai/df_dataset.csv'
     csv_file='/home/andrea/PlebyNet/traces/cleaned_dfws.csv'
     jobs = pd.read_csv(csv_file)
+    
     jobs.rename(columns={'runtime': 'duration'}, inplace=True)
     jobs.rename(columns={'inst_num': 'num_pod'}, inplace=True)
     jobs.rename(columns={'net_read': 'read_count'}, inplace=True)
     jobs.rename(columns={'net_write': 'write_count'}, inplace=True)
     jobs.rename(columns={'plan_cpu': 'num_cpu'}, inplace=True)
     jobs.rename(columns={'plan_gpu': 'num_gpu'}, inplace=True)
+    jobs = jobs[jobs['gpu_type'] == 'P100']
+    
     jobs['write_count'] = jobs['write_count'].astype(int)  # Truncates decimals
     jobs['read_count'] = jobs['read_count'].astype(int)    # Truncates decimals
-    jobs = jobs[jobs['write_count'] * jobs['num_pod'] <= 100]
-
+    jobs = jobs[jobs['read_count'] * jobs['num_pod'] <= 100]
+    jobs=jobs.sample(n=num_jobs)
+    
+    print(jobs.describe())
     job_list = jobs.to_dict(orient='records')
 
     # job_list = add_job(csv_file, None, limit=num_jobs)
@@ -231,6 +236,7 @@ def init_go_(num_jobs, filename, seed):
         job_dict['submit_time'] = time_
         time_+=1
         job_dict['bw'] = 0
+        job_dict['gpu_type'] = 'MISC'
         # job_dict['duration'] = min(10, job_dict['duration'])
         #job_dict["bw"] = 0 #float(job_dict["write_count"])
         # job_dict["write_count"] = min(1000, int(float(job_dict["write_count"])) )
@@ -263,7 +269,7 @@ def init_go_(num_jobs, filename, seed):
     # print(job_list[0]['job_id'], len(job_list))
 
 
-    job_list = poisson_arrivals(job_list)
+    # job_list = poisson_arrivals(job_list)
     # print(job_list)
     # sys.exit()
     return job_list

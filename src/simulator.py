@@ -610,25 +610,19 @@ class Simulator_Plebiscito:
                                 cur_bid = node.bids[int(subset['job_id'].iloc[0])]['auction_id']
 
                             if cur_bid!=prev_bid or rebroadcast:
-                                # print(cur_bid)
                                 node.forward_to_neighbohors()
                             
                         time_now += 1
-                        # print(self.topology.get_total_percentage_bw_used())
 
-                        # self.dispatch_jobs(progress_bid_events, queues, subset) 
 
-                    
+                    print(cur_bid, node.get_avail_cpu(), node.get_avail_gpu())
                     job_allocation_time.append(time.time()-t)
-                    logging.log(TRACE, 'All nodes completed the processing... bid processing time:' + str(time_now) +
-                                ' jobs allocated:' + str(tot_assigned_jobs))
+                    # if self.enable_logging:
+                    # logging.log(TRACE, 'All nodes completed the processing... bid processing time:' + str(time_now) +
+                                # ' jobs allocated:' + str(tot_assigned_jobs))
                     exec_time = time.time() - start_time
                 
                     t = time.time()
-
-
-                   
-
 
                     # Collect node results
                     a_jobs, u_jobs = self.collect_node_results(return_val, subset, exec_time, time_instant, save_on_file=False)
@@ -636,12 +630,9 @@ class Simulator_Plebiscito:
                     assigned_jobs = pd.concat([assigned_jobs, pd.DataFrame(a_jobs)])
                     unassigned_jobs = pd.concat([unassigned_jobs, pd.DataFrame(u_jobs)])
 
-                
                     # Deallocate unassigned jobs
                     self.deallocate_jobs(progress_bid_events, queues, pd.DataFrame(u_jobs))
                     self.collect_node_results(return_val, pd.DataFrame(), time.time()-start_time, time_instant, save_on_file=False)
-
-
                     
                     #subtract network resources
                     if a_jobs:

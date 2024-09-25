@@ -1851,7 +1851,8 @@ class node:
                 #     if self.counter[self.item['job_id']] == 1:
 
 
-
+                if self.item['job_id'] == 30:
+                    print('check')
                 success = self.update_bid()
 
 

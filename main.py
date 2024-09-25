@@ -98,8 +98,8 @@ if __name__ == '__main__':
     # if (dataset_plebi['num_gpu']*dataset_plebi['num_pod']).sum()/100 > 8 * NUM_NODES:
     # print((dataset_plebi['num_gpu']*dataset_plebi['num_pod']).sum()/100, 8 * NUM_NODES)
     # print((dataset_plebi['num_cpu']*dataset_plebi['num_pod']).sum()/100, 96 * NUM_NODES)
-    print(dataset_plebi)
-    print(dataset_plebi['num_pod'])
+    # print(dataset_plebi)
+    # print(dataset_plebi['num_pod'])
     
     # dataset = generate_dataset(entries_num=NUM_JOBS)
     # failures = generate_node_failures(n_nodes, n_failure, NUM_JOBS)
