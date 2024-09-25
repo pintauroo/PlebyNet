@@ -1,0 +1,3 @@
+utility,rep,num_nodes,link_prob,link_bw,tot_cpu,allocated_cpu,cpu,tot_gpu,allocated_gpu,gpu,allocated_jobs,rejected_jobs
+Utility.LGF,0,100,0,1000,960000,3200,0.3333333333333286,80000,200,0.25,1,0
+Utility.LGF,0,100,0,1000,960000,3200,0.3333333333333286,80000,200,0.25,1,0

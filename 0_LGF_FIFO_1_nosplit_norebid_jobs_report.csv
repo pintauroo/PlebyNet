@@ -1,0 +1,2 @@
+,duration,num_pod,num_cpu,num_gpu,gpu_type,cpu_usage,gpu_wrk_util,read_count,write_count,job_id,submit_time,bw,final_node_allocation,final_gpu_allocation,deadline,exec_time,complete_time,current_duration,speedup,ps
+0,10,2.0,1600.0,100.0,MISC,1372.1192588212102,71.75251231527093,17,19,10,4,0,"[0, 0]","['MISC', 'MISC']",11.844421851525048,4,14,10.0,1.0,0.0
