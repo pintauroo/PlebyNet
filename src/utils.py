@@ -88,11 +88,164 @@ def allocation_to_gpu_type(allocation, gpu_types):
         for a in allocation:
             ret.append(gpu_types[a].name)
         return ret
+    
+    
+def verify_resources_consumption(nodes, subset, nodes_snapshot, llctd):
+    # Ensure that subset contains at least one job_id
+    if subset["job_id"].empty:
+        raise ValueError("The subset does not contain any job_id.")
+
+    job_id = subset["job_id"].values[0]  # Extract the job_id once for efficiency
+
+    for node in nodes:
+        node_id = node.id
+        node_bids = node.bids
+
+        if job_id in node_bids:
+            auction_ids = node_bids[job_id].get('auction_id', [])
+            
+            if node_id in auction_ids:
+                # Count how many instances this node has won for the job
+                won_instances = auction_ids.count(node_id)
+                
+                # Retrieve resource requirements per instance
+                nn_gpu = node_bids[job_id].get('NN_gpu', 0)
+                nn_cpu = node_bids[job_id].get('NN_cpu', 0)
+                
+                allocated_gpu = won_instances * nn_gpu
+                allocated_cpu = won_instances * nn_cpu
+
+                # Retrieve previous available resources from the snapshot
+                previous_cpu = nodes_snapshot.get(node_id, {}).get('avail_cpu', 0)
+                previous_gpu = nodes_snapshot.get(node_id, {}).get('avail_gpu', 0)
+
+                # Retrieve current available resources
+                current_cpu = node.get_avail_cpu()
+                current_gpu = node.get_avail_gpu()
+
+                # Debugging statements (can be uncommented if needed)
+                # print(f"Node {node_id} won {won_instances} instances of job {job_id} "
+                #       f"with {allocated_cpu} CPUs and {allocated_gpu} GPUs")
+                # print(f"Previous CPU: {previous_cpu} - Current CPU: {current_cpu}")
+                # print(f"Previous GPU: {previous_gpu} - Current GPU: {current_gpu}")
+
+                # Assertions to verify CPU and GPU allocations
+                # if llctd:
+                assert previous_cpu - allocated_cpu == current_cpu, (
+                    f"Assertion failed for CPU on Node {node_id}: "
+                    f"{previous_cpu} (previous) - {allocated_cpu} (allocated) != {current_cpu} (current)"
+                )
+                assert previous_gpu - allocated_gpu == current_gpu, (
+                    f"Assertion failed for GPU on Node {node_id}: "
+                    f"{previous_gpu} (previous) - {allocated_gpu} (allocated) != {current_gpu} (current)"
+                )
+                # else:
+                #     assert previous_cpu == current_cpu, (
+                #         f"Assertion failed for CPU on Node {node_id}: "
+                #         f"{previous_cpu} (previous) - {allocated_cpu} (allocated) != {current_cpu} (current)"
+                #     )
+                #     assert previous_gpu == current_gpu, (
+                #         f"Assertion failed for GPU on Node {node_id}: "
+                #         f"{previous_gpu} (previous) - {allocated_gpu} (allocated) != {current_gpu} (current)"
+                #     )
+            else:
+                # Node did not win any instances of the job
+                previous_cpu = nodes_snapshot.get(node_id, {}).get('avail_cpu', 0)
+                previous_gpu = nodes_snapshot.get(node_id, {}).get('avail_gpu', 0)
+
+                current_cpu = node.get_avail_cpu()
+                current_gpu = node.get_avail_gpu()
+
+                # Debugging statements (can be uncommented if needed)
+                # print(f"Node {node_id} didn't win any instance of job {job_id}")
+                # print(f"Previous CPU: {previous_cpu} - Current CPU: {current_cpu}")
+                # print(f"Previous GPU: {previous_gpu} - Current GPU: {current_gpu}")
+
+                # Assertions to ensure resources remain unchanged
+                assert previous_cpu == current_cpu, (
+                    f"Assertion failed for CPU on Node {node_id}: "
+                    f"{previous_cpu} (previous) != {current_cpu} (current)"
+                )
+                assert previous_gpu == current_gpu, (
+                    f"Assertion failed for GPU on Node {node_id}: "
+                    f"{previous_gpu} (previous) != {current_gpu} (current)"
+                )
+        else:
+            # If the job_id is not in node.bids, ensure resources remain unchanged
+            previous_cpu = nodes_snapshot.get(node_id, {}).get('avail_cpu', 0)
+            previous_gpu = nodes_snapshot.get(node_id, {}).get('avail_gpu', 0)
+
+            current_cpu = node.get_avail_cpu()
+            current_gpu = node.get_avail_gpu()
+
+            # Debugging statements (can be uncommented if needed)
+            # print(f"Node {node_id} has no bids for job {job_id}")
+            # print(f"Previous CPU: {previous_cpu} - Current CPU: {current_cpu}")
+            # print(f"Previous GPU: {previous_gpu} - Current GPU: {current_gpu}")
+
+            # Assertions to ensure resources remain unchanged
+            assert previous_cpu == current_cpu, (
+                f"Assertion failed for CPU on Node {node_id}: "
+                f"{previous_cpu} (previous) != {current_cpu} (current)"
+            )
+            assert previous_gpu == current_gpu, (
+                f"Assertion failed for GPU on Node {node_id}: "
+                f"{previous_gpu} (previous) != {current_gpu} (current)"
+            )
+
+                
+
+def check_allocation(jobs, nodes):
+    allctd = True     # Initialize allctd assuming all allocations are correct
+    print('check_allocation jobs #',len(jobs))
+    
+    for _, job in jobs.iterrows():
+        j = job['job_id']
+        auction_ids = []  # To store sets of auction_ids from each node
+
+        # Collect auction_id lists from all nodes that have bids for job j
+        for node in nodes:
+            if j in node.bids:
+                try:
+                    auction_ids.append(node.bids[j].get('auction_id', []))
+                except AttributeError:
+                    print(f"Node {node.id} has an invalid bids structure for job {j}.")
+                    allctd = False
+                    continue
+
+        if not auction_ids:
+            print(f"No bids found for job id: {j}")
+            allctd = False
+            continue  # Proceed to the next job
+
+        # Compare all auction_id sets to ensure they are identical
+        first_set = auction_ids[0]
+        for idx, auction_set in enumerate(auction_ids[1:], start=2):
+            if auction_set != first_set:
+                allctd = False
+                print(f'BROKEN BID id: {j} - Mismatch found between node 1 and node {idx}')
+                for node in nodes:
+                    if j in node.bids:
+                        print(f"Node: {node.id}: {node.bids[j].get('auction_id', [])}")
+                # Optionally, you can return immediately upon finding the first inconsistency
+                # return False
+                break  # Exit the comparison loop for this job
+
+    if allctd:
+        print("All allocations are consistent.")
+        return True
+    else:
+        print("There were inconsistencies in allocations.")
+        return False
+
+
 
 def calculate_utility(nodes, num_edges, jobs, time_instant, filename, gpu_types, save_on_file):
     stats = {}
     stats['nodes'] = {}
     stats['tot_utility'] = 0
+    allctd = True
+    
     
     #field_names = ['n_nodes', 'n_req', 'exec_time', 'alpha']
     #dictionary = {'n_nodes': num_edges, 'n_req' : n_req, 'exec_time': simulation_time, 'alpha': alpha}
@@ -128,7 +281,6 @@ def calculate_utility(nodes, num_edges, jobs, time_instant, filename, gpu_types,
         n_layer = 0
         GPUs = []
         unmatch = False
-        
         for n in nodes:
             if j in n.bids:
                 n_layer = len(n.bids[j]['auction_id'])
@@ -150,6 +302,7 @@ def calculate_utility(nodes, num_edges, jobs, time_instant, filename, gpu_types,
                         break
                     
             if unmatch:
+                allctd = False
                 print('BROKEN BID id: ' + str(j))
                 for n in nodes:
                     if j in n.bids:
@@ -285,7 +438,7 @@ def calculate_utility(nodes, num_edges, jobs, time_instant, filename, gpu_types,
     if save_on_file:        
         write_data(field_names, dictionary, filename)
     
-    return assigned_jobs, unassigned_jobs
+    return assigned_jobs, unassigned_jobs, allctd
 
 
 def write_data(field_names, dictionary, filename):

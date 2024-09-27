@@ -210,11 +210,14 @@ def init_go_(num_jobs, filename, seed):
     jobs.rename(columns={'net_write': 'write_count'}, inplace=True)
     jobs.rename(columns={'plan_cpu': 'num_cpu'}, inplace=True)
     jobs.rename(columns={'plan_gpu': 'num_gpu'}, inplace=True)
-    jobs = jobs[jobs['gpu_type'] == 'P100']
+    # jobs = jobs[jobs['gpu_type'] == 'P100']
     
     jobs['write_count'] = jobs['write_count'].astype(int)  # Truncates decimals
     jobs['read_count'] = jobs['read_count'].astype(int)    # Truncates decimals
-    jobs = jobs[jobs['read_count'] * jobs['num_pod'] <= 100]
+    # jobs = jobs[jobs['read_count'] * jobs['num_pod'] <= 100]
+    # jobs = jobs[jobs['read_count'] > 5]
+    # jobs = jobs[jobs['write_count'] > 5]
+    # jobs = jobs[jobs['num_gpu'] > 100]
     jobs=jobs.sample(n=num_jobs)
     
     print(jobs.describe())
@@ -248,6 +251,7 @@ def init_go_(num_jobs, filename, seed):
         job_dict["complete_time"] = 0
         job_dict["current_duration"] = 0 # this value keeps track of the job's current duration with respect to the speedup. Not useful to plot, it is used for internal purposes
         job_dict["speedup"] = 1
+        job_dict["mnallc"] = job_dict['num_pod']
         # job_dict['num_pod'] = job_dict['num_pod'] if job_dict['num_pod'] * job_dict["read_count"] <= 100 else: 3
         # job_dict['num_pod'] = max(4,min(10, job_dict['num_pod'] ))
         # job_dict['num_pod'] = min(10, job_dict['num_pod'])

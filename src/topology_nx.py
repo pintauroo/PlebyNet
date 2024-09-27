@@ -62,7 +62,7 @@ class SpineLeafTopology:
         # First, check cumulative bandwidth requirements
         for worker in worker_nodes:
             if ps_node == worker:
-                print(f"Skipping allocation for PS {ps_node} and worker {worker} as they are on the same node.")
+                # print(f"Skipping allocation for PS {ps_node} and worker {worker} as they are on the same node.")
                 continue  # Skip allocation if PS and worker are the same node
 
             try:

@@ -91,7 +91,7 @@ def schedule_jobs(jobs: pd.DataFrame, scheduling_algorithm: SchedulingAlgorithm)
 
         # return jobs.sort_values(by=["duration"-"executed_for", "waiting_for", "submit_time"])
 
-def dispatch_job(dataset: pd.DataFrame, queues, use_net_topology=False, split=True, app_type=ApplicationGraphType.LINEAR, check_speedup=False, low_th=1, high_th=1.2):        
+def dispatch_job(dataset: pd.DataFrame, nmpds: int, queues, use_net_topology=False, split=True, app_type=ApplicationGraphType.LINEAR, check_speedup=False, low_th=1, high_th=1.2):        
     # if use_net_topology:
     #     timeout = 1 # don't change it
     # else:
@@ -107,6 +107,7 @@ def dispatch_job(dataset: pd.DataFrame, queues, use_net_topology=False, split=Tr
 
         data = message_data(
                     job,
+                    nmpds,
                     deallocate=False,
                     split=split,
                     app_type=app_type,
@@ -114,8 +115,8 @@ def dispatch_job(dataset: pd.DataFrame, queues, use_net_topology=False, split=Tr
                     increase=increase
                 )
         
-        random.seed(job['job_id'])
-        node_to_submit = random.randint(0, len(queues)-1)
+        # random.seed(job['job_id'])
+        # node_to_submit = random.randint(0, len(queues)-1)
         
         for q in queues:
             q.put(data)
@@ -154,20 +155,20 @@ def generate_application_graph(layer_number, app_type, bandwidth):
     return graph        
 
 
-def message_data(job, deallocate=False, split=True, app_type=ApplicationGraphType.LINEAR, speedup=0, increase=True):
+def message_data(job, nmpds, failure=False, deallocate=False, split=True, app_type=ApplicationGraphType.LINEAR, speedup=0, increase=True):
     
     random.seed(job['job_id'])
     np.random.seed(int(job['job_id']))
 
     data = {
         "job_id": job['job_id'],
-        # "user": job['user'],
+        "user": 1111,
         "num_gpu": job['num_gpu'],
         "num_cpu": job['num_cpu'],
         "duration": job['duration'],
         "N_layer": int(job['num_pod']),
         "N_layer_min": 1,
-        "N_layer_max": min(int(float(job['num_pod'])), int(float(job['num_pod'])) if split else 1),
+        "N_layer_max": nmpds,
         "N_layer_bundle": 2,
         "edge_id": None,
         "NN_gpu": job['num_gpu'],
@@ -176,6 +177,7 @@ def message_data(job, deallocate=False, split=True, app_type=ApplicationGraphTyp
         "gpu_type": job['gpu_type'],
         "increase": increase,
         "ps": job['ps'],
+        "failure": failure,  
         "read_count":  int(job['read_count']),
         "write_count": int(job['write_count']),
         "speedup": speedup

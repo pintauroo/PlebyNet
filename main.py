@@ -92,6 +92,7 @@ if __name__ == '__main__':
 
     
     dataset_plebi = pd.DataFrame(dataset[:NUM_JOBS])
+    # dataset_plebi = dataset_plebi[dataset_plebi['job_id']==330]
     # print(dataset_plebi)
     dataset_plebi.to_csv('MISC.csv')
     # dataset_plebi = dataset_plebi.sort_values(by=['num_pod', 'job_id'])

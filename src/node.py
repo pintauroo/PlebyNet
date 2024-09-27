@@ -150,7 +150,7 @@ class node:
             "forward_count":0,
             "deconflictions":0,
             "job_id": self.item['job_id'], 
-            "user": int(), 
+            # "user": int(), 
             "auction_id": list(), 
             "NN_gpu": self.item['NN_gpu'], 
             "NN_cpu": self.item['NN_cpu'], 
@@ -1495,9 +1495,9 @@ class node:
 
 
     def update_bid(self):
-        # if self.enable_logging:
-        #     self.print_node_state('[BEFORE]',bid = True, state= False)
-            # logging.log(TRACE, '[BEFORE]')
+        if self.enable_logging:
+            self.print_node_state('[BEFORE]',bid = True, state= False)
+            logging.log(TRACE, '[BEFORE]')
 
             
         if 'auction_id' in self.item:       
@@ -1710,7 +1710,12 @@ class node:
                 self.individual_gpu[id] += self.item["NN_gpu"][n]
 
     # def work(self, end_processing, notify_start, progress_bid, ret_val):
-
+    def get_node_res_snapshot(self):
+        self.res_snapshot = {}
+        self.res_snapshot['gpu'] = self.updated_gpu
+        self.res_snapshot['cpu'] = self.updated_cpu
+        
+        
     def work(self, time_now, time_global):
         if self.enable_logging:
             logger_method = getattr(logging, 'debug')
@@ -1787,8 +1792,8 @@ class node:
                                     consume = False
                                     self.item = it
                                     
-                                    # if self.enable_logging:
-                                    #     print('consume', self.id, self.item['job_id'], self.bids[self.item['job_id']]['retry'])
+                                    if self.enable_logging:
+                                        print('consume', self.id, self.item['job_id'], self.bids[self.item['job_id']]['retry'])
 
                         except Empty:
                             if len(items) == 0:
@@ -1806,7 +1811,17 @@ class node:
             # if the node is hosting the job
             if "unallocate" in self.item:
                 if self.check_if_hosting_job():
+                    if  self.item['failure'] == True:
+                        allocated_gpu = self.res_snapshot['gpu'] - self.updated_gpu
+                        allocated_cpu = self.res_snapshot['cpu'] - self.updated_cpu
+                    
                     self.release_resources()
+                    
+                    if  self.item['failure'] == True:
+                        assert self.res_snapshot['gpu'] == self.updated_gpu, print('allocated:', allocated_cpu, allocated_gpu)
+                        assert self.res_snapshot['cpu'] == self.updated_cpu, print('allocated:', allocated_cpu, allocated_gpu)
+                    
+                    
                     self.job_hosted.append(self.item['job_id'])
                 
                 #p_bid = copy.deepcopy(self.bids[self.item['job_id']]["auction_id"])
@@ -1836,10 +1851,14 @@ class node:
                 # if self.item['job_id'] in self.bids:
                 #     prev_bid = copy.deepcopy(self.bids[self.item['job_id']]["auction_id"])
                 
-                if self.item['job_id'] not in self.counter:
+                # if self.item['job_id'] not in self.counter:
+                #     first_msg = True
+                    
+                if 'user' in self.item and  self.item['user'] == 1111:
+                    self.get_node_res_snapshot()
                     self.init_null()
-                    first_msg = True
                     self.counter[self.item['job_id']] = 0
+                    
                 self.counter[self.item['job_id']] += 1      
                 prev_bid = copy.deepcopy(self.bids[self.item['job_id']]['auction_id'])
 
@@ -1847,19 +1866,7 @@ class node:
                 if self.enable_logging:
                     self.print_node_state('START', bid = True, state= False)
 
-                # if self.with_networking:
-                #     if self.counter[self.item['job_id']] == 1:
-
-
-                if self.item['job_id'] == 30:
-                    print('check')
                 success = self.update_bid()
-
-
-
-                # if float('-inf') in self.bids[self.item['job_id']]['auction_id'] and \
-                #     self.id not in self.bids[self.item['job_id']]['auction_id']:
-                #     success = self.update_bid()
 
                 tries = 0
                 bid_ = self.bids[self.item['job_id']]['auction_id']
@@ -1871,6 +1878,9 @@ class node:
                     self.id not in self.bids[self.item['job_id']]['auction_id'] and
                     bid_ != bid_now):
 
+                        # if self.item['job_id'] == 330:
+                        #     print('REBIDDING', self.bids[self.item['job_id']]['auction_id'])
+                            
                         success = self.update_bid()
                         bid_now = self.bids[self.item['job_id']]['auction_id']
                         tries += 1
@@ -1905,12 +1915,7 @@ class node:
                 self.bids[self.item['job_id']]['start_time'] = 0                            
                 self.bids[self.item['job_id']]['count'] += 1
                 
-                #self.update_bw(prev_bid)
-                
-        # if need_rebroadcast:
-        #     self.forward_to_neighbohors()
-        # elif first_msg:
-        #     self.forward_to_neighbohors(first_msg=True)
+
 
         return success
         
