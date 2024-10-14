@@ -21,9 +21,9 @@ def generate_gpu_types(n_nodes):
     
     gpu_types = []
     for _ in range(n_nodes):
-        # t_id = np.random.choice(np.arange(0, 4), p=occurrencies)
-        # gpu_types.append(GPUSupport.get_gpu_type(GPU_types[t_id])) GPUType.MISC
-        gpu_types.append(GPUType.MISC) 
+        t_id = np.random.choice(np.arange(0, 4), p=occurrencies)
+        gpu_types.append(GPUSupport.get_gpu_type(GPU_types[t_id]))
+        # gpu_types.append(GPUType.MISC) 
         
     return gpu_types
     
@@ -89,6 +89,79 @@ def allocation_to_gpu_type(allocation, gpu_types):
             ret.append(gpu_types[a].name)
         return ret
     
+
+def verify_tot_res(nodes, allocated_jobs, per_node_cpu=9600, per_node_gpu=800):
+    """
+    Optimized version of verify_tot_res to enhance performance.
+
+    Parameters:
+    - nodes (list): A list of node objects. Each node should have `avail_cpu` and `avail_gpu` attributes.
+    - allocated_jobs (pd.DataFrame): A pandas DataFrame containing job allocations with 'num_cpu', 'num_gpu', and 'num_pod' columns.
+    - per_node_cpu (int, optional): Total CPU capacity per node. Defaults to 9600.
+    - per_node_gpu (int, optional): Total GPU capacity per node. Defaults to 800.
+
+    Raises:
+    - ValueError: If the allocated resources exceed the available resources.
+    """
+
+    num_nodes = len(nodes)
+    total_capacity_cpu = per_node_cpu * num_nodes
+    total_capacity_gpu = per_node_gpu * num_nodes
+
+    # Calculate total allocated resources using NumPy for vectorization
+    if not allocated_jobs.empty:
+        num_pods = allocated_jobs['num_pod'].values
+        allocated_cpu = allocated_jobs['num_cpu'].values
+        allocated_gpu = allocated_jobs['num_gpu'].values
+
+        tot_allocated_cpu = np.dot(allocated_cpu, num_pods)
+        tot_allocated_gpu = np.dot(allocated_gpu, num_pods)
+    else:
+        tot_allocated_cpu = 0
+        tot_allocated_gpu = 0
+
+    # Extract available resources using list comprehensions (faster than generator expressions)
+    # Assuming nodes have 'avail_cpu' and 'avail_gpu' as attributes
+    # for node in nodes:
+    #     print(node.initial_cpu-node.updated_cpu)
+
+    # avail_cpu = [node.initial_cpu-node.updated_cpu for node in nodes]
+    # avail_gpu = [node.initial_gpu-node.updated_gpu for node in nodes]
+
+    avail_cpu = [node.initial_cpu-node.updated_cpu for node in nodes]
+    avail_gpu = [node.initial_gpu-node.updated_gpu for node in nodes]
+
+    tot_available_cpu = np.sum(avail_cpu)
+    tot_available_gpu = np.sum(avail_gpu)
+
+    # Calculate expected available resources
+    expected_available_cpu = total_capacity_cpu - tot_allocated_cpu
+    expected_available_gpu = total_capacity_gpu - tot_allocated_gpu
+
+    # Early exit if CPU mismatch is detected
+    # if expected_available_cpu != tot_available_cpu:
+    print(tot_available_cpu,  tot_allocated_cpu)
+    if tot_available_cpu != tot_allocated_cpu:
+        raise ValueError(
+            f"CPU allocation mismatch:\n"
+            f"Total Capacity CPU: {total_capacity_cpu}\n"
+            f"Total Allocated CPU: {tot_allocated_cpu}\n"
+            f"Expected Available CPU: {expected_available_cpu}\n"
+            f"Actual Available CPU: {tot_available_cpu}"
+        )
+
+    # Early exit if GPU mismatch is detected
+    # if expected_available_gpu != tot_available_gpu:
+    if tot_available_gpu != tot_allocated_gpu:
+
+        raise ValueError(
+            f"GPU allocation mismatch:\n"
+            f"Total Capacity GPU: {total_capacity_gpu}\n"
+            f"Total Allocated GPU: {tot_allocated_gpu}\n"
+            f"Expected Available GPU: {expected_available_gpu}\n"
+            f"Actual Available GPU: {tot_available_gpu}"
+        )
+
     
 def verify_resources_consumption(nodes, subset, nodes_snapshot, llctd):
     # Ensure that subset contains at least one job_id
@@ -197,7 +270,7 @@ def verify_resources_consumption(nodes, subset, nodes_snapshot, llctd):
 
 def check_allocation(jobs, nodes):
     allctd = True     # Initialize allctd assuming all allocations are correct
-    print('check_allocation jobs #',len(jobs))
+    # print('check_allocation jobs #',len(jobs))
     
     for _, job in jobs.iterrows():
         j = job['job_id']
@@ -232,7 +305,7 @@ def check_allocation(jobs, nodes):
                 break  # Exit the comparison loop for this job
 
     if allctd:
-        print("All allocations are consistent.")
+        # print("All allocations are consistent.")
         return True
     else:
         print("There were inconsistencies in allocations.")
@@ -303,11 +376,11 @@ def calculate_utility(nodes, num_edges, jobs, time_instant, filename, gpu_types,
                     
             if unmatch:
                 allctd = False
-                print('BROKEN BID id: ' + str(j))
-                for n in nodes:
-                    if j in n.bids:
-                        print(f"Node: {n.id}: {n.bids[j]['auction_id']}")
-                        break
+                # print('BROKEN BID id: ' + str(j))
+                # for n in nodes:
+                #     if j in n.bids:
+                #         print(f"Node: {n.id}: {n.bids[j]['auction_id']}")
+                #         break
                 # something bad happened
                 break
             
@@ -323,7 +396,7 @@ def calculate_utility(nodes, num_edges, jobs, time_instant, filename, gpu_types,
 
         if flag:
             job["final_node_allocation"] = nodes[node_with_bid].bids[j]['auction_id']
-            job["final_gpu_allocation"] = allocation_to_gpu_type(nodes[node_with_bid].bids[j]['auction_id'], gpu_types=gpu_types)
+            # job["final_gpu_allocation"] = allocation_to_gpu_type(nodes[node_with_bid].bids[j]['auction_id'], gpu_types=gpu_types)
             
             lower_speedup = 10000
             for g in set(GPUs):

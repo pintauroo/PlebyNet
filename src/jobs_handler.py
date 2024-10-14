@@ -91,7 +91,7 @@ def schedule_jobs(jobs: pd.DataFrame, scheduling_algorithm: SchedulingAlgorithm)
 
         # return jobs.sort_values(by=["duration"-"executed_for", "waiting_for", "submit_time"])
 
-def dispatch_job(dataset: pd.DataFrame, nmpds: int, queues, use_net_topology=False, split=True, app_type=ApplicationGraphType.LINEAR, check_speedup=False, low_th=1, high_th=1.2):        
+def dispatch_job(dataset: pd.DataFrame, nmpds: int, read_count, queues, use_net_topology=False, split=False, app_type=ApplicationGraphType.LINEAR, check_speedup=False, low_th=1, high_th=1.2):        
     # if use_net_topology:
     #     timeout = 1 # don't change it
     # else:
@@ -108,6 +108,7 @@ def dispatch_job(dataset: pd.DataFrame, nmpds: int, queues, use_net_topology=Fal
         data = message_data(
                     job,
                     nmpds,
+                    read_count,
                     deallocate=False,
                     split=split,
                     app_type=app_type,
@@ -155,7 +156,7 @@ def generate_application_graph(layer_number, app_type, bandwidth):
     return graph        
 
 
-def message_data(job, nmpds, failure=False, deallocate=False, split=True, app_type=ApplicationGraphType.LINEAR, speedup=0, increase=True):
+def message_data(job, nmpds, read_count, failure=False, deallocate=False, split=False, app_type=ApplicationGraphType.LINEAR, speedup=0, increase=True):
     
     random.seed(job['job_id'])
     np.random.seed(int(job['job_id']))
@@ -178,8 +179,8 @@ def message_data(job, nmpds, failure=False, deallocate=False, split=True, app_ty
         "increase": increase,
         "ps": job['ps'],
         "failure": failure,  
-        "read_count":  int(job['read_count']),
-        "write_count": int(job['write_count']),
+        "read_count":  read_count,
+        "write_count": read_count,
         "speedup": speedup
     }
 

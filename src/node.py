@@ -15,9 +15,10 @@ import logging
 import math 
 import threading
 from threading import Event
-import math
+# import math5
 # from src.topology import topo as LogicalTopology
 # from FGD.src.utils import Quadrant
+from typing import List, Dict, Any
 
 
 TRACE = 5    
@@ -33,10 +34,9 @@ class InternalError(Exception):
 class node:
 
     # def __init__(self, id, max_bw: float, gpu_type: GPUType, utility: Utility, alpha: float, enable_logging: bool, logical_topology, tot_nodes: int, progress_flag: bool, decrement_factor=0.00001, with_bw = False):
-    def __init__(self, id, max_bw: float, utility: Utility, alpha: float, enable_logging: bool, logical_topology, tot_nodes: int, progress_flag: bool, decrement_factor=0.00001, with_bw = False):
+    def __init__(self, id, initial_gpu, initial_cpu, gpu_type: GPUType, max_bw: float, utility: Utility, alpha: float, enable_logging: bool, logical_topology, tot_nodes: int, progress_flag: bool, decrement_factor=0.00001, with_bw = False):
         self.id = id    # unique edge node id
         # self.gpu_type = gpu_type
-        self.gpu_type = GPUType.MISC
         # self.gpu_type = GPUType.T4
         self.utility = utility
         self.alpha = alpha
@@ -45,9 +45,16 @@ class node:
         self.tot_nodes = tot_nodes
         self.progress_flag = progress_flag
         self.decrement_factor = decrement_factor
-        
-        self.initial_cpu, self.initial_gpu = GPUSupport.get_compute_resources(self.gpu_type)
-        # self.initial_cpu, self.initial_gpu = 200, 20
+
+        if initial_cpu == None:
+            self.initial_cpu, self.initial_gpu = GPUSupport.get_compute_resources(gpu_type)
+            # print(self.initial_cpu, self.initial_gpu)
+        else:
+            self.initial_cpu = initial_cpu
+            self.initial_gpu = initial_gpu
+
+        self.gpu_type = GPUType.MISC
+
         self.initial_cpu *= 100
         self.initial_gpu *= 100
         self.updated_gpu = self.initial_gpu
@@ -59,7 +66,7 @@ class node:
         self.count_msgs = 0
 
 
-        self.performance = NodePerformance(self.initial_cpu, self.initial_gpu, self.id)
+        # self.performance = NodePerformance(self.initial_cpu, self.initial_gpu, self.id)
         
         if utility == Utility.FGD:
             self.individual_gpu = []
@@ -207,7 +214,6 @@ class node:
             util_rate = 0 # round(cpus_util)
         return util_rate
 
-
     def utility_function(self, avail_bw, avail_cpu, avail_gpu):
         if self.item['job_id'] in self.job_hosted and GPUSupport.compute_speedup(self.gpu_type, GPUSupport.get_gpu_type(self.item['gpu_type']) ) == self.item['speedup']:
             return -999999999
@@ -244,6 +250,15 @@ class node:
                 return f(x, 0.01, beta)
             else:
                 return f(x, self.alpha, beta)
+        elif self.utility == Utility.LIKELIHOOD:
+            x = self.item['NN_cpu']/self.item['NN_gpu']
+            if self.updated_gpu > 0:
+                local_ratio = self.updated_cpu /self.updated_gpu
+                util_rate = (x / local_ratio )
+            else:
+                util_rate = 0
+            return util_rate
+
         elif self.utility == Utility.ALPHA_GPU_CPU:
             return (self.alpha*(avail_bw/self.initial_bw))+((1-self.alpha)*(avail_cpu/self.initial_cpu)) #BW vs CPU
         elif self.utility == Utility.ALPHA_GPU_CPU:
@@ -255,9 +270,12 @@ class node:
             return avail_gpu * corrective_factor
         elif self.utility == Utility.SGF:
             corrective_factor = GPUSupport.get_GPU_corrective_factor(self.gpu_type, GPUSupport.get_gpu_type(self.item['gpu_type']), decrement=self.decrement_factor)
-            return (self.initial_gpu - avail_gpu) * corrective_factor
+            # return (self.initial_gpu - avail_gpu) * corrective_factor
+            return (800 - avail_gpu) * corrective_factor
         elif self.utility == Utility.UTIL:
             return self.util_rate()
+        elif self.utility == Utility.SEQ:
+            return 100-self.id
 
         elif self.utility == Utility.POWER:
             pass # we need to define here the utility function
@@ -268,7 +286,6 @@ class node:
         elif self.utility == Utility.NET:
             speed = GPUSupport.compute_speedup(self.gpu_type, GPUSupport.get_gpu_type(self.item['gpu_type'])) * (avail_gpu/self.initial_gpu)
             return speed / (avail_bw/self.initial_bw)
-            
 
     def forward_to_neighbohors(self, custom_dict=None, resend_bid=False, first_msg=False):            
         msg = {
@@ -337,8 +354,6 @@ class node:
                 
         
         #self.last_sent_msg[self.item['job_id']] = msg
-
-
 
     def print_node_state(self, msg, bid=False, state =True, forward = False, type='debug'):
         logger_method = getattr(logging, type)
@@ -481,40 +496,35 @@ class node:
         return False
         
     def gang_schedule(self, count, start, bidtime, connected_to = None):
-            # self.with_bw = False
-            # gang schedule 
-            topoology = self.logical_topology.adj
-            # print(topoology)
-            # topoology = self.logical_topology.calculate_host_to_host_adjacency_matrix()
-            # topoology = self.logical_topology.get_updatede_bw_matrix().copy()
-            # if start != 0  and \
-            #     topoology[self.id][start-1] and \
-            #     topoology[start-1][self.id]:
-            #         print("connected")
+            if self.with_bw:
+                topoology = self.logical_topology.adj.copy()
 
             if self.item['NN_cpu'] * count <= self.updated_cpu and self.item['NN_gpu'] * count <= self.updated_gpu:
                 for i in range(start, start+count):
                     self.layer_bid_already[self.item['job_id']][i] = True
-
-                    if connected_to is not None and topoology[self.id][connected_to] >= self.item['read_count']:
-                        # you are directly connected to the previous node
-                        res_bid = self.utility_function(self.updated_bw, self.updated_cpu, self.updated_gpu)
-                        net_bid = topoology[self.id][connected_to]
-                        topoology[self.id][connected_to] -= self.item['read_count']
-
-                    else:
-                        # you are the first bidder
-                        res_bid = self.utility_function(self.updated_bw, self.updated_cpu, self.updated_gpu)
-                        # net_bid = 0
-                        # for k in topoology[self.id]:
-                        #     net_bid += k
-                        net_bid = max(topoology[self.id])
-                        
                     if self.with_bw:
-                        bid = int(res_bid * net_bid)
-                        # print('bids', self.id, 'bid', bid, res_bid, net_bid)
+                        if connected_to is not None and topoology[self.id][connected_to] >= self.item['read_count']:
+                            # you are directly connected to the previous node
+                            res_bid = self.utility_function(self.updated_bw, self.updated_cpu, self.updated_gpu)
+                            net_bid = topoology[self.id][connected_to]
+                            topoology[self.id][connected_to] -= self.item['read_count']
+
+                        else:
+                            # you are the first bidder
+                            res_bid = self.utility_function(self.updated_bw, self.updated_cpu, self.updated_gpu)
+                            net_bid = max(topoology[self.id])
+
+                        # print(res_bid, net_bid)
+                        if net_bid == 0 and res_bid > 0 :
+                            bid = 1 / res_bid
+                        elif net_bid > 0 and res_bid > 0:
+                            bid = net_bid/res_bid # if you have the highest GPU but the lowest bw youre less likely to get the job!
+                        else:
+                            bid = 0
                     else:
-                        bid = int(res_bid)
+                        bid = self.utility_function(self.updated_bw, self.updated_cpu, self.updated_gpu)
+
+                        #  = int(res_bid)
                         
 
                     # if bid == 0:
@@ -548,95 +558,166 @@ class node:
                     self.bids[self.item['job_id']]['auction_id'][i]= self.id
                     self.bids[self.item['job_id']]['timestamp'][i] = bidtime
 
-    def count_layers(self):
-        count = 0 
-        tmp_cpu = copy.deepcopy(self.updated_cpu)
-        tmp_gpu = copy.deepcopy(self.updated_gpu)
-        first = True
-        # self.with_bw = False
-        if float('-inf') in self.bids[self.item['job_id']]['auction_id'] :
-            start = self.bids[self.item['job_id']]['auction_id'].index(float('-inf'))
-
-            for i in range(start, start + self.item['N_layer']):
-                # if not self.layer_bid_already[self.item['job_id']][i] \
-                    
-                if self.with_bw:
-
-                    if self.item['NN_gpu'] <= tmp_gpu and\
-                        self.item['NN_cpu'] <= tmp_cpu:
-                        if start == 0:
-                            tmp_cpu-=self.item['NN_cpu']
-                            tmp_gpu-=self.item['NN_gpu']
-                            count+=1
-
-                        else:
-                            if first:
-                                # topoology = self.logical_topology.get_updated_bw_matrix().copy()
-                                topoology = copy.deepcopy(self.logical_topology.adj)
-                                
-                                connected_to = self.bids[self.item['job_id']]['auction_id'][0]
-                                first = False
-                            if topoology[self.id][connected_to]>=self.item['read_count']:
-                                count+=1
-                                tmp_cpu-=self.item['NN_cpu']
-                                tmp_gpu-=self.item['NN_gpu']
-                                topoology[self.id][connected_to]-=self.item['read_count']
+    def count_layers(self) -> int:
+        job_id = self.item.get('job_id')
+        auction: List[Any] = self.bids.get(job_id, {}).get('auction_id', [])
+        
+        # Prevent division by zero by setting defaults if necessary
+        nn_cpu: int = self.item.get('NN_cpu', 1)
+        nn_gpu: int = self.item.get('NN_gpu', 1)
+        id = self.id
+        ucpu = self.updated_cpu
+        ugpu = self.updated_gpu
+        
+        # Calculate res_count using integer division
+        res_count_cpu = self.updated_cpu // nn_cpu
+        res_count_gpu = self.updated_gpu // nn_gpu
+        res_count = min(res_count_cpu, res_count_gpu, len(auction))
+        
+        count: int = res_count
+        
+        if self.with_bw and 0 < res_count < len(auction):
+            elements = self.logical_topology.adj[self.id]
+            read_count = self.item['read_count']
+            
+            if max(elements) >= read_count:
+                total = sum(elements)
+                num_elements = len(elements)
+                average = total // num_elements  # Ensure average is an integer
                 
-                else:
-                    if self.item['NN_gpu'] <= tmp_gpu and\
-                        self.item['NN_cpu'] <= tmp_cpu:
-                            tmp_cpu-=self.item['NN_cpu']
-                            tmp_gpu-=self.item['NN_gpu']
-                            count+=1
+                # Calculate the potential new count
+                potential_count = int(min(res_count, average // read_count))
+                
+                if 1 < potential_count < len(auction):
+                    # Find the largest divisor of len(auction) that is <= potential_count
+                    largest = self.largest_divisor(len(auction), potential_count)
+                    count = largest
+            else:
+                count=0
+                # print('too big', self.id, count)
+        # print(count)
+        return int(count)
+
+    def largest_divisor(self, n: int, max_divisor: int) -> int:
+        """
+        Finds the largest divisor of `n` that is less than or equal to `max_divisor`.
+        """
+        # Check for divisors from max_divisor down to sqrt(n)
+        for i in range(min(max_divisor, math.isqrt(n)), 0, -1):
+            if n % i == 0:
+                pair_divisor = n // i
+                # Check if the pair_divisor is valid and within the limit
+                if pair_divisor <= max_divisor:
+                    return pair_divisor
+                # If not, return the current divisor `i`
+                return i
+        return 1
+
+
+
+
+    # def count_layers(self):
+    #     # tmp_cpu = copy.deepcopy(self.updated_cpu)
+    #     # tmp_gpu = copy.deepcopy(self.updated_gpu)
+    #     count = 0 
+    #     auction = self.bids[self.item['job_id']]['auction_id']
+    #     res_count =  int(min(self.updated_cpu/self.item['NN_cpu'], self.updated_gpu/self.item['NN_gpu'], len(auction) ))
+    #     if res_count!= 0 and res_count < len(auction):
+    #         topology = copy.deepcopy(self.logical_topology.adj)
+    #         elements = topology[self.id]
+    #         total = sum(float(element) for element in elements)
+    #         average = int(float(total) / len(elements)) 
+    #         count = min(res_count, average)
+    #         print(self.id, 'net', average, count)
+    #     else:        
+    #         count = res_count
+            # print(self.id, 'full', count)
+
+        # print('final',res_count, average, min(res_count, average))    
+
+
+
+        # first = True
+        # # self.with_bw = False
+        # if float('-inf') in self.bids[self.item['job_id']]['auction_id'] :
+        #     start = self.bids[self.item['job_id']]['auction_id'].index(float('-inf'))
+
+        #     for i in range(start, start + self.item['N_layer']):
+        #         # if not self.layer_bid_already[self.item['job_id']][i] \
+                    
+        #         if self.with_bw:
+
+        #             if self.item['NN_gpu'] <= tmp_gpu and\
+        #                 self.item['NN_cpu'] <= tmp_cpu:
+        #                 if start == 0:
+        #                     tmp_cpu-=self.item['NN_cpu']
+        #                     tmp_gpu-=self.item['NN_gpu']
+        #                     count+=1
+
+        #                 else:
+        #                     if first:
+        #                         # topoology = self.logical_topology.get_updated_bw_matrix().copy()
+        #                         topoology = copy.deepcopy(self.logical_topology.adj)
+                                
+        #                         connected_to = self.bids[self.item['job_id']]['auction_id'][0]
+        #                         first = False
+        #                     if topoology[self.id][connected_to]>=self.item['read_count']:
+        #                         count+=1
+        #                         tmp_cpu-=self.item['NN_cpu']
+        #                         tmp_gpu-=self.item['NN_gpu']
+        #                         topoology[self.id][connected_to]-=self.item['read_count']
+                
+        #         else:
+        #             if self.item['NN_gpu'] <= tmp_gpu and\
+        #                 self.item['NN_cpu'] <= tmp_cpu:
+        #                     tmp_cpu-=self.item['NN_cpu']
+        #                     tmp_gpu-=self.item['NN_gpu']
+        #                     count+=1
                         
-        return count
+        # return count
+
 
     def bid_index(self, count, bidtime):
         # topoology = self.logical_topology.get_updated_bw_matrix()
-        topoology = self.logical_topology.adj
+        topoology = self.logical_topology.adj.copy()
 
         if count>0 and float('-inf') in self.bids[self.item['job_id']]['auction_id']:
             start = self.bids[self.item['job_id']]['auction_id'].index(float('-inf'))
             count = min(count, self.bids[self.item['job_id']]['auction_id'].count(float('-inf')))
             if start != 0:
-                # connected_to=self.bids[self.item['job_id']]['auction_id'][start-1] # RING
-                connected_to=self.bids[self.item['job_id']]['auction_id'][0] # PS
-                if  topoology[self.id][connected_to]>0 and \
-                    topoology[connected_to][self.id]>0:
-                    # if you are directly connected, then you can bid on the next layer    
-                    self.gang_schedule(count, start, bidtime, connected_to)
+                if self.with_bw:
+                    connected_to=self.bids[self.item['job_id']]['auction_id'][0] # PS
+                    if  topoology[self.id][connected_to]>0 and \
+                        topoology[connected_to][self.id]>0:
+                        # if you are directly connected, then you can bid on the next layer    
+                        self.gang_schedule(count, start, bidtime, connected_to)
+                else:
+                    self.gang_schedule(count, start, bidtime)
             else:
                     self.gang_schedule(count, start, bidtime)
 
     def bid(self):  
         job_GPU_type = GPUSupport.get_gpu_type(self.item['gpu_type'])                     
-        # check if node GPU is capable of hosting the job
+
         if not GPUSupport.can_host(self.gpu_type, job_GPU_type):
             return False
         
-        if GPUSupport.compute_speedup(self.gpu_type, job_GPU_type) < self.item['speedup'] and self.item["increase"]:
-            return False
+        # if GPUSupport.compute_speedup(self.gpu_type, job_GPU_type) < self.item['speedup'] and self.item["increase"]:
+        #     return False
 
-        if GPUSupport.compute_speedup(self.gpu_type, job_GPU_type) > self.item['speedup'] and not self.item["increase"]:
-            return False
+        # if GPUSupport.compute_speedup(self.gpu_type, job_GPU_type) > self.item['speedup'] and not self.item["increase"]:
+        #     return False
         
-        if GPUSupport.compute_speedup(self.gpu_type, job_GPU_type) == self.item['speedup'] and self.item['job_id'] not in self.job_hosted:
-            return False
+        # if GPUSupport.compute_speedup(self.gpu_type, job_GPU_type) == self.item['speedup'] and self.item['job_id'] not in self.job_hosted:
+        #     return False
               
-        tmp_bid = copy.deepcopy(self.bids[self.item['job_id']])
         bidtime = self.time_now
-        # bidtime = datetime.now()
-        
-        # create an array containing the indices of the layers that can be bid on
         possible_layer = []
         
         count = self.count_layers()
 
         # If first time bidding (no received bid yet) then just bid
         if 'bid' not in self.item:
-            
-            # count how many you can support
-            # if count >= self.item['ps']:
                 self.gang_schedule(count, 0, bidtime)
 
         else:
@@ -649,18 +730,6 @@ class node:
                     self.gang_schedule(count, 0, bidtime)
                 
             else:
-                # if you did bid on the first set of layer, check if you are directly connected with the previous winner
-                # if float('-inf') in self.item['auction_id']:
-
-                #     to_bid = self.item['auction_id'].count(float('-inf'))
-                #     if count >= to_bid:
-                #         start_local = self.item['auction_id'].index(float('-inf'))
-                #         start_bide = self.layer_bid_already[self.item['job_id']].index(False)
-                #         if start_local == start_bide:
-                #             self.bid_index(count, bidtime)
-                #         else:
-                #             self.bid_index(start_local, bidtime)    
-
                 if self.id not in self.item['auction_id'] and self.id not in self.bids[self.item['job_id']]['auction_id']:
                     self.bid_index(count, bidtime)
                 
@@ -671,178 +740,7 @@ class node:
             return True
         else:
             return False
-                    
-                
-                # if False in self.layer_bid_already[self.item['job_id']]:
-
-
-
-
-        # if self.id not in self.bids[self.item['job_id']]['auction_id']:
-        #     for i in range(len(self.layer_bid_already[self.item['job_id']])):
-        #         # include only those layers that have not been bid on yet and that can be executed on the node (i.e., the node has enough resources)
-        #         if not self.layer_bid_already[self.item['job_id']][i] \
-        #             and self.item['NN_gpu'][i] <= self.updated_gpu \
-        #                 and self.item['NN_cpu'][i] <= self.updated_cpu:# and self.item['NN_data_size'][i] <= self.updated_bw:
-        #             possible_layer.append(i)
-        # else:
-        #     # if I already own at least one layer, I'm not allowed to bet anymore
-        #     # otherwise I break the property of monotonicity
-        #     return False
                         
-        # # if there are no layers that can be bid on, return
-        # # as the iteration goes on, the number of possible layers decreases (i.e., remove the ufeasible layers)
-        # while len(possible_layer) > 0:
-        #     best_placement = None
-        #     best_score = None
-            
-        #     # iterate on the identify the preferable layer to bid on
-        #     for l in possible_layer:
-        #         score = self.compute_layer_score(self.item["NN_cpu"][l], self.item["NN_gpu"][l], self.item["NN_data_size"][l])
-        #         if best_score == None or score > best_score:
-        #             best_score = score
-        #             best_placement = l
-            
-        #     # compute the bid for the current layer, and remove it from the list of possible layers (no matter if the bid is valid or not)
-        #     bid = self.utility_function(self.updated_bw, self.updated_cpu, self.updated_gpu)
-        #     #bid -= self.id * 0.000000001
-        #     self.layer_bid_already[self.item['job_id']][best_placement] = True    
-        #     possible_layer.remove(best_placement)       
-
-        #     # if my bid is higher than the current bid, I can bid on the layer
-        #     if bid > tmp_bid['bid'][best_placement] or (bid == tmp_bid['bid'][best_placement] and self.id < tmp_bid['auction_id'][best_placement]):
-                                
-        #         gpu_ = self.item['NN_gpu'][best_placement]
-        #         cpu_ = self.item['NN_cpu'][best_placement]
-        #         #bw_ = self.item["NN_data_size"][best_placement]
-                
-        #         n_layer = 1
-                        
-        #         layers = []
-                
-        #         tmp_bid['bid'][best_placement] = bid
-        #         tmp_bid['auction_id'][best_placement] = self.id
-        #         tmp_bid['timestamp'][best_placement] = bidtime
-                
-        #         left_bound = best_placement
-        #         right_bound = best_placement
-                
-        #         # the success is checked at the end of the while loop. If it is true, it means that the bid is valid
-        #         success = False 
-                                
-        #         while True:
-        #             # if I already bid on the maximum number of layers, return with success
-        #             if n_layer == self.item["N_layer_max"]:
-        #                 success = True
-        #                 break
-                    
-        #             left_bound = left_bound - 1                    
-        #             right_bound = right_bound + 1
-                    
-        #             left_score = None
-        #             right_score = None
-                    
-        #             if left_bound >= 0 and self.layer_bid_already[self.item['job_id']][left_bound] == False \
-        #                 and self.item['NN_gpu'][left_bound] <= self.updated_gpu - gpu_ \
-        #                     and self.item['NN_cpu'][left_bound] <= self.updated_cpu - cpu_:
-        #                 left_score = self.compute_layer_score(self.item["NN_cpu"][left_bound], self.item["NN_gpu"][left_bound], self.item["NN_data_size"][left_bound])
-                        
-        #             if right_bound < len(self.item["NN_cpu"]) and self.layer_bid_already[self.item['job_id']][right_bound] == False \
-        #                 and self.item['NN_gpu'][right_bound] <= self.updated_gpu - gpu_ \
-        #                     and self.item['NN_cpu'][right_bound] <= self.updated_cpu - cpu_:
-                                
-        #                 right_score = self.compute_layer_score(self.item["NN_cpu"][right_bound], self.item["NN_gpu"][right_bound], self.item["NN_data_size"][right_bound])
-                    
-        #             target_layer = None
-                    
-        #             # proceed on the leyer on the left  
-        #             if (left_score is not None and right_score is None) or (left_score is not None and right_score is not None and left_score >= right_score):
-        #                 target_layer = left_bound
-                        
-        #                 # not betting on the right bound layer, so decrease
-        #                 right_bound -= 1
-                    
-        #             # proceed on the layer on the right
-        #             if (right_score is not None and left_score is None) or (left_score is not None and right_score is not None and left_score < right_score):
-        #                 target_layer = right_bound
-                         
-        #                 # not betting on the right bound layer, so decrease
-        #                 left_bound += 1
-                    
-        #             # if there is a layer that can be bid on, bid on it    
-        #             if target_layer is not None:     
-        #                 bid = self.utility_function(self.updated_bw, self.updated_cpu, self.updated_gpu)
-        #                 #bid -= self.id * 0.000000001
-                            
-        #                 # if my bid is higher than the current bid, I can bid on the layer
-        #                 if bid > tmp_bid['bid'][target_layer] or (bid == tmp_bid['bid'][target_layer] and self.id < tmp_bid['auction_id'][target_layer]):
-        #                     tmp_bid['bid'][target_layer] = bid
-        #                     tmp_bid['auction_id'][target_layer]=(self.id)
-        #                     tmp_bid['timestamp'][target_layer] = bidtime
-                        
-        #                     n_layer += 1
-        #                     layers.append(target_layer)
-                            
-        #                     cpu_ += self.item['NN_cpu'][target_layer]
-        #                     gpu_ += self.item['NN_gpu'][target_layer]
-        #                     #bw_ += self.item['NN_data_size'][target_layer] 
-        #                 else: # try also on the other side
-        #                     found = False
-                            
-        #                     # we tried on the left bound, let's try on the right one now
-        #                     if target_layer == left_bound and right_score is not None:
-        #                         target_layer = right_bound + 1
-        #                         found = True
-                                
-        #                     # we tried on the right bound, let's try on the left one now    
-        #                     if target_layer == right_bound and left_score is not None:
-        #                         target_layer = left_bound - 1
-        #                         found = True
-                                
-        #                     if found:
-        #                         bid = self.utility_function(self.updated_bw, self.updated_cpu, self.updated_gpu)
-        #                         bid -= self.id * 0.000000001
-                                
-        #                         # if my bid is higher than the current bid, I can bid on the layer
-        #                         if bid > tmp_bid['bid'][target_layer] or (bid == tmp_bid['bid'][target_layer] and self.id < tmp_bid['auction_id'][target_layer]):
-        #                             tmp_bid['bid'][target_layer] = bid
-        #                             tmp_bid['auction_id'][target_layer]=(self.id)
-        #                             tmp_bid['timestamp'][target_layer] = bidtime
-                                
-        #                             n_layer += 1
-        #                             layers.append(target_layer)
-                                    
-        #                             cpu_ += self.item['NN_cpu'][target_layer]
-        #                             gpu_ += self.item['NN_gpu'][target_layer]
-        #                             #bw_ += self.item['NN_data_size'][target_layer]
-        #                         else:
-        #                             if n_layer >= self.item["N_layer_min"] and n_layer <= self.item["N_layer_max"]:
-        #                                 success = True
-        #                             break
-        #                     else:
-        #                         if n_layer >= self.item["N_layer_min"] and n_layer <= self.item["N_layer_max"]:
-        #                             success = True
-        #                         break           
-        #             else: 
-        #                 if n_layer >= self.item["N_layer_min"] and n_layer <= self.item["N_layer_max"]:
-        #                     success = True
-        #                 break
-
-                # if success:
-                #     self.updated_cpu -= cpu_
-                #     self.updated_gpu -= gpu_
-                #     #self.updated_bw -= bw_
-                    
-                #     self.bids[self.item['job_id']] = copy.deepcopy(tmp_bid)
-                    
-                #     for l in layers:
-                #         self.layer_bid_already[self.item['job_id']][l] = True
-
-                    # return True
-                              
-        # return False     
-        # return True  
-    
     def update_bw(self, prev_bid, deallocate=False):
         bw = 0
                 
@@ -1354,10 +1252,6 @@ class node:
         """Helper function to count instances of a value in a list."""
         return lst.count(value) if value != float('-inf') else 0
 
-
-
-
-
     def process_bids(self):
         tmp_winner = {'bid': [float('-inf')] * self.item['N_layer'], 
                       'auction_id': [float('-inf')] * self.item['N_layer'], 
@@ -1488,16 +1382,10 @@ class node:
         # return rebroadcast
         return True
         
-
-
-
-
-
-
     def update_bid(self):
         if self.enable_logging:
             self.print_node_state('[BEFORE]',bid = True, state= False)
-            logging.log(TRACE, '[BEFORE]')
+            # logging.log(TRACE, '[BEFORE]')
 
             
         if 'auction_id' in self.item:       
@@ -1632,30 +1520,6 @@ class node:
             else:
                 self.bid()
             return True
-        
-
-    # def process_auctions(self):
-    #     index = 0
-    #     while index < self.item['N_layer']:
-    #         local = self.bids[self.item['job_id']]['auction_id'][index]
-    #         received = self.item['auction_id'][index]
-
-    #         if received != local:
-    #             received_w = self.get_sequence_length(self.item['auction_id'], index)
-    #             local_w = self.get_sequence_length(self.bids[self.item['job_id']]['auction_id'], index)
-
-    #             if local_w == received_w:
-    #                 rebroadcast = self.deconfliction(index, received_w)
-    #                 index += received_w
-    #             elif local_w < received_w:
-    #                 self.update_bids(index, received_w)
-    #                 rebroadcast = True
-    #             else:
-    #                 index += local_w
-    #                 rebroadcast = True
-    #         else:
-    #             index += 1
-    #     return rebroadcast
 
     def get_sequence_length(self, auction_list, start_index):
         current_value = auction_list[start_index]
@@ -1687,7 +1551,6 @@ class node:
             self.bids[self.item['job_id']]['auction_id'][k] = self.item['auction_id'][k]
             self.bids[self.item['job_id']]['timestamp'][k] = self.item['timestamp'][k]
 
-
     def check_if_hosting_job(self):
         if self.item['job_id'] in self.bids and self.id in self.bids[self.item['job_id']]['auction_id']:
             return True
@@ -1709,13 +1572,11 @@ class node:
             for n, id in enumerate(self.allocated_on[self.item["job_id"]]):
                 self.individual_gpu[id] += self.item["NN_gpu"][n]
 
-    # def work(self, end_processing, notify_start, progress_bid, ret_val):
     def get_node_res_snapshot(self):
         self.res_snapshot = {}
         self.res_snapshot['gpu'] = self.updated_gpu
         self.res_snapshot['cpu'] = self.updated_cpu
-        
-        
+            
     def work(self, time_now, time_global):
         if self.enable_logging:
             logger_method = getattr(logging, 'debug')
@@ -1769,44 +1630,6 @@ class node:
         for it in items:
             self.item = it
 
-            if self.item['job_id'] in self.bids and \
-                'auction_id' in self.item and \
-                self.bids[self.item['job_id']]['auction_id'] == self.item['auction_id'] and \
-                self.bids[self.item['job_id']]['bid'] == self.item['bid'] and \
-                self.bids[self.item['job_id']]['retry_ts'] !=  time_now: 
-                # self.bids[self.item['job_id']]['timestamp'] == self.item['timestamp']:
-                    # print(self.id)
-
-                    self.bids[self.item['job_id']]['retry'] += 1
-                    self.bids[self.item['job_id']]['retry_ts'] = time_now
-
-                    consume = True
-                    while consume:
-                        try:
-                            if self.q[self.id].empty():
-                                consume = False
-                            else:
-
-                                it = self.q[self.id].get(timeout=timeout)
-                                if self.bids[self.item['job_id']]['auction_id'] != it['auction_id']:
-                                    consume = False
-                                    self.item = it
-                                    
-                                    if self.enable_logging:
-                                        print('consume', self.id, self.item['job_id'], self.bids[self.item['job_id']]['retry'])
-
-                        except Empty:
-                            if len(items) == 0:
-                                # print('node', self.id, 'empty')
-                                return None
-                    
-                    if self.bids[self.item['job_id']]['retry'] > 5:
-                        if self.enable_logging:
-                            self.print_node_state('DISCARDED JOB!!!!!!!!!!!!!!!')
-                        return                            
-
-
-
             # if the message is a "unallocate" message, the node must release the resources
             # if the node is hosting the job
             if "unallocate" in self.item:
@@ -1845,8 +1668,47 @@ class node:
                 ret_val["gpu_type"] = self.gpu_type.name
 
             else:   
-                # prev_bid = None
-                first_msg = False
+
+                
+                if self.item['job_id'] in self.bids and \
+                    'auction_id' in self.item and \
+                    self.bids[self.item['job_id']]['auction_id'] == self.item['auction_id'] and \
+                    self.bids[self.item['job_id']]['bid'] == self.item['bid'] and \
+                    self.bids[self.item['job_id']]['retry_ts'] !=  time_now: 
+                    # self.bids[self.item['job_id']]['timestamp'] == self.item['timestamp']:
+                        # print(self.id)
+
+
+                        # print(time_now, time_global, self.id, it['job_id'], self.bids[self.item['job_id']]['retry'])
+
+                        consume = True
+                        while consume:
+                            try:
+                                if self.q[self.id].empty():
+                                    consume = False
+                                else:
+
+                                    it = self.q[self.id].get(timeout=timeout)
+                                    if self.bids[self.item['job_id']]['auction_id'] != it['auction_id']:
+                                        consume = False
+                                        self.item = it
+                                        
+                                        # if self.enable_logging:
+                                        #     print('consume', self.id, self.item['job_id'], self.bids[self.item['job_id']]['retry'])
+
+                            except Empty:
+                                if len(items) == 0:
+                                    # print('node', self.id, 'empty')
+                                    return None
+                        
+                        if self.bids[self.item['job_id']]['retry'] > 10:
+                            if self.enable_logging:
+                                self.print_node_state('DISCARDED JOB!!!!!!!!!!!!!!!'+str(self.bids[self.item['job_id']]['retry']))
+                            return      
+                        else:                      
+                            if self.enable_logging:
+                                self.print_node_state('DISCARDED JOB??????????'+str(self.bids[self.item['job_id']]['retry']))
+
                 
                 # if self.item['job_id'] in self.bids:
                 #     prev_bid = copy.deepcopy(self.bids[self.item['job_id']]["auction_id"])
@@ -1858,6 +1720,9 @@ class node:
                     self.get_node_res_snapshot()
                     self.init_null()
                     self.counter[self.item['job_id']] = 0
+                else:
+                    self.bids[self.item['job_id']]['retry'] += 1
+                    self.bids[self.item['job_id']]['retry_ts'] = time_now
                     
                 self.counter[self.item['job_id']] += 1      
                 prev_bid = copy.deepcopy(self.bids[self.item['job_id']]['auction_id'])
@@ -1918,9 +1783,7 @@ class node:
 
 
         return success
-        
 
-                                    
             # except Empty:
             #     # the exception is raised if the timeout in the queue.get() expires.
             #     # the break statement must be executed only if the event has been set 

@@ -30,11 +30,24 @@ def set_job_list_arrival_time(job_list, arrival_rate=None, interval=60, shuffle_
     return job_list
 
 
-def poisson_arrivals(job_list):
+def poisson_arrivals(job_list, total_time=5000, total_jobs=1000, interval_length=10):
+    """
+    Generates Poisson-distributed job arrivals over a given time period.
 
-    total_time = 5000
-    total_jobs = 1000
-    interval_length = 10
+    Parameters:
+    - job_list: DataFrame containing the jobs to be assigned arrival times.
+    - total_time: Total time span over which jobs arrive (default 5000 units).
+    - total_jobs: Total number of jobs to be scheduled (default 1000).
+    - interval_length: Length of each interval in the time span (default 10 units).
+
+    Returns:
+    - Updated job_list DataFrame with 'submit_time' column added.
+    """
+    
+    # Check if job_list contains enough jobs
+    if len(job_list) < total_jobs:
+        raise ValueError(f"Job list contains only {len(job_list)} jobs, but {total_jobs} jobs were requested.")
+
     num_intervals = total_time // interval_length
 
     # Mean arrival rate per interval
@@ -57,15 +70,12 @@ def poisson_arrivals(job_list):
                 arrival_times.append(arrival_time)
                 job_counter += 1
             else:
-                print('limit jobs reached')
                 break
 
         if job_counter >= total_jobs:
-            print('limit jobs found')
-
             break
 
-    # If there are still unassigned jobs, distribute them in the remaining time
+    # If there are still unassigned jobs, distribute them randomly over the remaining time
     while job_counter < total_jobs:
         arrival_time = np.random.uniform(0, total_time)
         arrival_times.append(arrival_time)
@@ -74,11 +84,9 @@ def poisson_arrivals(job_list):
     # Sort the arrival times
     arrival_times.sort()
 
-    # Assign arrival times to jobs
-    for i, job in enumerate(job_list):
-        job['submit_time'] = int(arrival_times[i])
+    # Update job_list with sorted arrival times
+    job_list['submit_time'] = [int(arrival_time) for arrival_time in arrival_times[:total_jobs]]
 
-    
     return job_list
 
 
@@ -198,10 +206,10 @@ def init_go_(num_jobs, filename, seed):
     # random.seed(int(time.time()))
     random.seed(int(seed))
     np.random.seed(int(seed))
-    # current_directory = os.getcwd()
-    # csv_file=current_directory+'/traces/'+filename
+    current_directory = os.getcwd()
+    csv_file=current_directory+'/traces/'+filename
     # csv_file = '/home/andrea/PlebyNet/traces/pai/df_dataset.csv'
-    csv_file='/home/andrea/PlebyNet/traces/cleaned_dfws.csv'
+    # csv_file='/home/andrea/PlebyNet/traces/cleaned_dfws.csv'
     jobs = pd.read_csv(csv_file)
     
     jobs.rename(columns={'runtime': 'duration'}, inplace=True)
@@ -212,15 +220,16 @@ def init_go_(num_jobs, filename, seed):
     jobs.rename(columns={'plan_gpu': 'num_gpu'}, inplace=True)
     # jobs = jobs[jobs['gpu_type'] == 'P100']
     
-    jobs['write_count'] = jobs['write_count'].astype(int)  # Truncates decimals
-    jobs['read_count'] = jobs['read_count'].astype(int)    # Truncates decimals
+    jobs['write_count'] = jobs['write_count'].astype(float).round(2)  # Truncates decimals
+    jobs['read_count'] = jobs['read_count'].astype(float).round(2)    # Truncates decimals
     # jobs = jobs[jobs['read_count'] * jobs['num_pod'] <= 100]
     # jobs = jobs[jobs['read_count'] > 5]
     # jobs = jobs[jobs['write_count'] > 5]
     # jobs = jobs[jobs['num_gpu'] > 100]
-    jobs=jobs.sample(n=num_jobs)
+    jobs = jobs[jobs['duration'] > 10000]
+    # jobs=jobs.sample(n=num_jobs)
     
-    print(jobs.describe())
+    # print(jobs.describe())
     job_list = jobs.to_dict(orient='records')
 
     # job_list = add_job(csv_file, None, limit=num_jobs)
@@ -230,6 +239,12 @@ def init_go_(num_jobs, filename, seed):
 
     # print(job_list[0]['job_id'])
     # job_list = set_job_list_arrival_time(job_list, arrivals)
+    # Determine the maximum duration across all jobs
+    max_duration = max(job['duration'] for job in job_list)
+
+    # Define the maximum allowed duration
+    max_allowed_duration = 1000
+
     time_ = 1
     id_ = 10
     for job_dict in job_list:
@@ -237,36 +252,58 @@ def init_go_(num_jobs, filename, seed):
         job_dict['job_id'] = id_
         id_+=10
         job_dict['submit_time'] = time_
-        time_+=1
+        # time_+=1
         job_dict['bw'] = 0
         job_dict['gpu_type'] = 'MISC'
-        # job_dict['duration'] = min(10, job_dict['duration'])
+        # job_dict['duration'] = 1
+        # job_dict['duration'] = min(300, job_dict['duration'])
         #job_dict["bw"] = 0 #float(job_dict["write_count"])
         # job_dict["write_count"] = min(1000, int(float(job_dict["write_count"])) )
         # job_dict["read_count"] =  min(1000, int(float(job_dict["read_count"]))  )
+
+        # job_dict['duration'] = 500
+        # if job_dict['duration']>1000:
+        #     job_dict['duration'] = random.randint(600,1000)
+
+        scaled_duration = int(job_dict['duration'] * max_allowed_duration / max_duration)
+        if scaled_duration<100 or scaled_duration > 2000:
+            job_dict['duration'] = max(scaled_duration*10, random.randint(100,1000))
+        else:
+            job_dict['duration'] = scaled_duration
+
         job_dict["final_node_allocation"] = []
         job_dict["final_gpu_allocation"] = []
-        job_dict["deadline"] = job_dict['submit_time'] + job_dict['duration'] * (1 + 0.1 * random.random()) # 10% deadline slack
+        # job_dict["deadline"] = job_dict['submit_time'] + job_dict['duration'] * (1 + 0.1 * random.random()) # 10% deadline slack
         job_dict["exec_time"] = -1
         job_dict["complete_time"] = 0
-        job_dict["current_duration"] = 0 # this value keeps track of the job's current duration with respect to the speedup. Not useful to plot, it is used for internal purposes
+        job_dict["current_duration"] = 0.0 # this value keeps track of the job's current duration with respect to the speedup. Not useful to plot, it is used for internal purposes
         job_dict["speedup"] = 1
         job_dict["mnallc"] = job_dict['num_pod']
         # job_dict['num_pod'] = job_dict['num_pod'] if job_dict['num_pod'] * job_dict["read_count"] <= 100 else: 3
         # job_dict['num_pod'] = max(4,min(10, job_dict['num_pod'] ))
-        # job_dict['num_pod'] = min(10, job_dict['num_pod'])
+        # job_dict['num_pod'] = min(4, job_dict['num_pod'] )
+        # job_dict['num_pod'] = job_dict['num_pod'] if job_dict['num_pod']%2==0 else job_dict['num_pod']+1 
+        # job_dict['num_pod'] = 4
         # job_dict['num_gpu'] = int(800)
         # job_dict['num_cpu'] = int(9600)
+        # job_dict['num_gpu'] = int(800/2)
+        # job_dict['num_cpu'] = int(9600/2)
+        # if job_dict['num_gpu']<100:
+        #     job_dict['num_gpu'] = job_dict['num_gpu']*20 
+        #     job_dict['num_cpu'] = job_dict['num_cpu']*10 
+
         job_dict["ps"] = job_dict['num_pod'] // 5
         # job_dict["write_count"] = job_dict["read_count"] = int(random.randint(10, int(100/job_dict['num_pod'])))
-        # job_dict["write_count"] = job_dict["read_count"] = 1
+        # job_dict["write_count"] = job_dict["read_count"] = max(job_dict["write_count"],job_dict["read_count"])
+        job_dict["read_count"] =  int(job_dict["read_count"] * 100)
+        job_dict["write_count"] = int(job_dict["write_count"] * 100)
         
         # job_dict['read_count'] = job_dict['num_gpu'] * job_dict['num_cpu']  * job_dict['num_pod'] / 10000
         # decrease = random.uniform(1, 4)
         # job_dict['num_gpu'] = int(float(job_dict['num_gpu'])/job_dict['num_pod'])
         # job_dict['num_cpu'] = int(float(job_dict['num_cpu'])/job_dict['num_pod'])
 
-    job_list = job_list[:num_jobs]
+    # job_list = job_list[:num_jobs]
     # random.seed(int(time.time()))
 
     # random.shuffle(job_list)

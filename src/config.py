@@ -14,6 +14,8 @@ class Utility(Enum):
     SPEEDUPV2 = 10
     FGD = 11
     NET = 12
+    SEQ = 13
+    LIKELIHOOD = 14
        
 class DebugLevel(Enum):
     TRACE = 5

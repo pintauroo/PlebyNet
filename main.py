@@ -1,259 +1,202 @@
-import copy
-import random
-import pandas as pd
 import sys
 import pandas as pd
 import os
 import time
-# import logging
-import random
 from pathlib import Path
-from os import path
-import numpy as np
+import yaml  # Ensure PyYAML is installed
 
 from src.simulator import Simulator_Plebiscito
 from src.config import ApplicationGraphType, DebugLevel, SchedulingAlgorithm, Utility
 from src.dataset_builder import generate_dataset
-# from kubernetes.kubernetes_scheduler import KubernetesScheduler
+from src.dataset_loader import init_go_, poisson_arrivals
 
-from src.dataset_loader import init_go_
-# from Alibaba.simulator import Simulator
-# from Alibaba.utils import print_fn, ALLOC_POLICY_DICT, PREEMPT_POLICY_DICT
-# from Alibaba.simulator import Simulator
-# from Alibaba.utils import print_fn, ALLOC_POLICY_DICT, PREEMPT_POLICY_DICT
+def load_config(config_path: str) -> dict:
+    """
+    Load the YAML configuration file.
 
+    Args:
+        config_path (str): Path to the YAML config file.
+
+    Returns:
+        dict: Configuration parameters.
+    """
+    with open(config_path, 'r') as file:
+        config = yaml.safe_load(file)
+    return config
+
+def validate_config(config: dict, required_keys: list):
+    """
+    Validate that all required keys are present in the configuration.
+
+    Args:
+        config (dict): The configuration dictionary.
+        required_keys (list): List of keys that must be present.
+
+    Raises:
+        KeyError: If any required key is missing.
+    """
+    missing_keys = [key for key in required_keys if key not in config]
+    if missing_keys:
+        raise KeyError(f"Missing configuration parameters: {', '.join(missing_keys)}")
+
+    # Additionally validate nested keys for bandwidth configurations
+    # bw_mode = config.get('bw_mode', None)
+    # if bw_mode not in ['limited', 'infinite']:
+        # raise ValueError("Invalid 'bw_mode' value. Must be 'limited' or 'infinite'.")
+    for with_bw in config.get('with_bw_options', None):
+        bw_required_keys = ['max_spine_capacity', 'max_leaf_capacity', 'max_node_bw', 'max_leaf_to_spine_bw']
+        if with_bw:
+            missing_bw = [key for key in bw_required_keys if key not in config.get('limited_bw', {})]
+            if missing_bw:
+                raise KeyError(f"Missing limited_bw parameters: {', '.join(missing_bw)}")
+        else:
+            missing_bw = [key for key in bw_required_keys if key not in config.get('infinite_bw', {})]
+            if missing_bw:
+                raise KeyError(f"Missing infinite_bw parameters: {', '.join(missing_bw)}")
+
+def get_bandwidth_config(config: dict, with_bw) -> dict:
+    """
+    Select the bandwidth configuration based on bw_mode.
+
+    Args:
+        config (dict): The entire configuration dictionary.
+
+    Returns:
+        dict: Selected bandwidth configuration.
+    """
+    if with_bw:
+        return config['limited_bw']
+    else:
+        return config['infinite_bw']
 
 if __name__ == '__main__':
-    # NUM_JOBS = 35 #args.num_jobs
-    NUM_JOBS = 100 #args.num_jobs
-    NUM_NODES = 100
-    n_failure = 0
-    
-    # # ------ START FROM ALIBABA -------
-    
-    DATE = "%02d%02d" % (time.localtime().tm_mon, time.localtime().tm_mday)
+    # Ensure the correct number of arguments
+    if len(sys.argv) != 2:
+        print("Usage: python main.py <rep>")
+        sys.exit(1)
 
-    # INPUT TRACE FILE
-    CSV_FILE_PATH = Path(__file__).parent / 'traces/pai/'
-    DESCRIBE_FILE = None
-    # CSV_FILE = 'df_dataset.csv'
-    CSV_FILE = 'pai_job_no_estimate_100K.csv'
-    
-    # rep = sys.argv[1]
-    rep = 0
-    
-    ARRIVAL_RATE =0 # args.arrival_rate
-    NUM_GPUS = 0 #args.num_gpus
-    REPEAT =1 # args.repeat
-    SORT_NODE_POLICY = 3
-    MAX_TIME = int(1e9)
-    VERBOSE = 0
-    # LOG_LEVEL = logging.WARNING
-    NUM_CPUS = round(23.22 * NUM_GPUS)  # 23.22 * num_gpus 156576/6742
-    HETERO = True  # heterogeneous cluster
-    PATTERN = 0  # Cluster capacity varying pattern
-    GPU_TYPE_MATCHING = 1 # GPU type perfect match
-    EXPORT_JOB_STATS = True
-    EXPORT_CLUSTER_UTIL = True
-    RANDOM_SEED = 42
-    NUM_SPARE_NODE = 0
-    SORT_BY_JCT = True
+    # Load configuration
+    rep = sys.argv[1]
+    config_file = 'config.yaml'
+    config = load_config(config_file)
 
-    # Logging in directory
-    LOG_DIR = Path(__file__).parent / 'logs'
+    # Define all required top-level configuration keys
+    required_keys = [
+        'num_jobs',
+        'num_nodes',
+        'n_failure',
+        'csv_file_path',
+        'csv_file',
+        'num_spine_switches',
+        'num_leaf_switches',
+        'host_per_leaf',
+        'limited_bw',
+        'infinite_bw',
+        'utils',
+        'sched',
+        'with_bw_options'
+    ]
 
-    comments = '%dg_%dn_h%d_%dp_%dsn_%dgt-%dar-%dj-%dx-%dr' % (NUM_GPUS, NUM_NODES, HETERO, PATTERN, SORT_NODE_POLICY, GPU_TYPE_MATCHING, ARRIVAL_RATE, NUM_JOBS, REPEAT, RANDOM_SEED)
+    # Validate configuration
+    try:
+        validate_config(config, required_keys)
+    except (KeyError, ValueError) as e:
+        print(f"Configuration Error: {e}")
+        sys.exit(1)
 
-    log_time = int(time.time() % 100000)
-    if not os.path.exists(LOG_DIR):
-        os.makedirs(LOG_DIR)
+    # Assign general variables from config
+    NUM_JOBS = config['num_jobs']
+    NUM_NODES = config['num_nodes']
+    n_failure = config['n_failure']
 
-    # log_file = LOG_DIR / ("%s-%s-%s-%s.log" % (DATE, CSV_FILE, log_time, comments))
-    # logging.basicConfig(level=LOG_LEVEL, format="%(message)s", filename=log_file, filemode='a')
-    # describe_file = CSV_FILE_PATH / DESCRIBE_FILE if DESCRIBE_FILE is not None else None
-    
-    # ------ END FROM ALIBABA -------
-    # generate common dataset and adjust it for plebi
+    CSV_FILE_PATH = Path(__file__).parent / config['csv_file_path']
+    CSV_FILE = config['csv_file']
+
+    # Assign topology variables from config
+    NUM_SPINE_SWITCHES = config['num_spine_switches']
+    NUM_LEAF_SWITCHES = config['num_leaf_switches']
+    HOST_PER_LEAF = config['host_per_leaf']
+
+
+
+    # Initialize dataset
     dataset = init_go_(NUM_JOBS, CSV_FILE, rep)
-    # dataset = sorted(dataset, key=lambda x: x['submit_time'])
+    df_dataset_full = pd.DataFrame(dataset)
 
+    # Simulation Parameters from config
+    utils = config['utils']
+    sched = config['sched']
+    with_bw = config['with_bw_options']
 
-    # df = pd.read_csv('/home/andrea/Desktop/PlebiscitoN/traces/pai/df_dataset.csv')
+    for rep_ in range(1):
+        # Sample jobs
+        random_state = int(time.time())
+        # random_state = 42
+        dataset_plebi_ = df_dataset_full.sample(n=NUM_JOBS, random_state=random_state)
+        # dataset_plebi_ = poisson_arrivals(dataset_plebi_, total_time=500, total_jobs=NUM_JOBS)
+        print(dataset_plebi_.describe())
 
-    # Convert the DataFrame to a list of dictionaries
-    # dataset = df.to_dict(orient='records')
-    # dataset = dataset[:5]
-    # df = pd.DataFrame(dataset)
-
-    # # Write to CSV file
-    # df.to_csv('static_dataset.csv', index=False)
-
-
-
-    
-    dataset_plebi = pd.DataFrame(dataset[:NUM_JOBS])
-    # dataset_plebi = dataset_plebi[dataset_plebi['job_id']==330]
-    # print(dataset_plebi)
-    dataset_plebi.to_csv('MISC.csv')
-    # dataset_plebi = dataset_plebi.sort_values(by=['num_pod', 'job_id'])
-    # if (dataset_plebi['num_gpu']*dataset_plebi['num_pod']).sum()/100 > 8 * NUM_NODES:
-    # print((dataset_plebi['num_gpu']*dataset_plebi['num_pod']).sum()/100, 8 * NUM_NODES)
-    # print((dataset_plebi['num_cpu']*dataset_plebi['num_pod']).sum()/100, 96 * NUM_NODES)
-    # print(dataset_plebi)
-    # print(dataset_plebi['num_pod'])
-    
-    # dataset = generate_dataset(entries_num=NUM_JOBS)
-    # failures = generate_node_failures(n_nodes, n_failure, NUM_JOBS)
-    
-    # # ------ START ALIBABA SIMULATION -------
-    
-    # for alloc_policy in [0, 1, 2, 4, 8]:  # 0SDF, 1SJU, 2SJG, 4SJGG, 8FIFO (see utils.py)
-    # for alloc_policy in [0, 8, 16]:  # 0SDF, 1SJU, 2SJG, 4SJGG, 8FIFO (see utils.py) 16exec time
-    # # for alloc_policy in [16]:  # 0SDF, 1SJU, 2SJG, 4SJGG, 8FIFO (see utils.py)
-    #     # for preempt_policy in [2]:  # 2LGF
-    #     preempt_policy =2
-    #     for sorting_policy in [1, 2, 3]:  
-    #     # for sorting_policy in [3]:  
-    #         print('INIT,', str(alloc_policy),', ', str(sorting_policy))
-
-    #         key = (alloc_policy, preempt_policy)
-    #         print_key = "(%-4s,%4s)" % (ALLOC_POLICY_DICT.get(key[0]), PREEMPT_POLICY_DICT.get(key[1]))
-
-    #         # running
-    #         start_time = time.time()
-    #         print_fn("\n###### %s ######" % print_key)
-
-    #         simulator = Simulator(
-    #             csv_file=CSV_FILE_PATH / CSV_FILE,
-    #             alloc_policy=alloc_policy,
-    #             preempt_policy=preempt_policy,
-    #             sort_node_policy=sorting_policy,
-    #             num_nodes=NUM_NODES,
-    #             random_seed=RANDOM_SEED,
-    #             max_time=MAX_TIME,
-    #             num_spare_node=NUM_SPARE_NODE,
-    #             pattern=PATTERN,
-    #             hetero=HETERO,
-    #             num_gpus=NUM_GPUS,
-    #             num_cpus=NUM_CPUS,
-    #             describe_file=describe_file,
-    #             log_file=log_file,
-    #             export_job_stats=EXPORT_JOB_STATS,
-    #             export_cluster_util=EXPORT_CLUSTER_UTIL,
-    #             arrival_rate=ARRIVAL_RATE,
-    #             num_jobs_limit=NUM_JOBS,
-    #             gpu_type_matching=GPU_TYPE_MATCHING,
-    #             verbose=VERBOSE,
-    #             dataset=dataset,
-    #             repetition=rep)
-    #         results = simulator.simulator_go(repeat=REPEAT)
-    #         print('done,', str(alloc_policy),', ', str(sorting_policy))
-            
-    # # ------ END ALIBABA SIMULATION -------
-    
-    # ------ START PLEBISCITO SIMULATION -------
-    
-
-    # utils = ['SPEEDUP', 'SPEEDUPV2', "LGF", "UTIL"]  
-    # utils = ["UTIL", "SGF"]
-    # sched = ['FIFO', 'SDF'] 
-    # utils = ['LGF']
-    # utils = ['UTIL', 'SGF', 'LGF']
-    utils = ['LGF']
-    # utils = ['SGF']
-    # utils = ['UTIL']
-
-    sched = ['FIFO'] 
-    # utils = ['SGF']
-
-    split = [False]
-    rebid = [False]
-    # rebid = [True]
-    # dec_factor = [0, .25, .5, .75, 1]
-    dec_factor = [0.3]
-    probability = [0.5 + i * 0.1 for i in range(int((1.0 - 0.5) / 0.1) + 1)]
-    # probability = [0.3]
-    # bw = [2000, 4000, 8000, 16000, 32000, 64000, 128000]
-    # bw = [5000, 10000, 20000, 40000, 80000, 100000, 128000]
-    bw = [1000]
-    with_bw = False
-    with_bw = True
-
-    for u in utils:
-        utility = getattr(Utility, u, None)
-        if utility is None:
-            print(f"Warning: '{u}' is not a valid Utility member.")
-            continue
-        
         dec_factor = [0]
-        # if u == "LGF":
-        #     dec_factor = [0, 1]
-
-        for s in sched:
-            scheduling_algorithm = getattr(SchedulingAlgorithm, s, None)
-            if scheduling_algorithm is None:
-                print(f"Warning: '{s}' is not a valid SchedulingAlgorithm member.")
+        for u in utils:
+            utility = getattr(Utility, u, None)
+            if utility is None:
+                print(f"Warning: '{u}' is not a valid Utility member.")
                 continue
 
-            for sp in split:
-                for rb in rebid:
-                    for b in bw:
-                        # for prob in probability:
-                            simulator = Simulator_Plebiscito(filename=rep,
-                                                n_nodes=NUM_NODES,
-                                                n_jobs=NUM_JOBS,
-                                                dataset=dataset_plebi,
-                                                # failures=failures,
-                                                # logical_topology="ring_graph",
-                                                # logical_topology="compute_ring_graph",
-                                                # logical_topology="compute_star_graph",
-                                                # logical_topology="compute_probabilistic_graph",
+            for s in sched:
+                scheduling_algorithm = getattr(SchedulingAlgorithm, s, None)
+                if scheduling_algorithm is None:
+                    print(f"Warning: '{s}' is not a valid SchedulingAlgorithm member.")
+                    continue
 
-                                                logical_topology="compute_complete_graph",
-                                                scheduling_algorithm=scheduling_algorithm,
-                                                utility=utility,
-                                                debug_level=DebugLevel.TRACE,
-                                                # enable_logging=True,
-                                                split=sp,
-                                                enable_post_allocation=rb,
-                                                
-                                                # decrement_factor=dc,
-                                                # probability=1,
-                                                # probability=prob,
-                                                max_bw=b,
-                                                with_bw = with_bw
-                                                )
-                            simulator.run()
-                            simulator.save_res('results.csv', rep)
-    
-    # nodes = simulator1.get_nodes()
-    # adj = simulator1.get_adjacency_matrix()
-    
-    # simulator_kubernetes = KubernetesScheduler(nodes, dataset, "kubernetes", ApplicationGraphType.LINEAR, True, adj, failures)
-    
+                for withbw_option in with_bw:
+                    print(withbw_option)
+                    # Assign bandwidth variables based on bw_mode from config
+                    bw_config = get_bandwidth_config(config, withbw_option)
+                    MAX_SPINE_CAPACITY = bw_config['max_spine_capacity']
+                    MAX_LEAF_CAPACITY = bw_config['max_leaf_capacity']
+                    MAX_NODE_BW = bw_config['max_node_bw']
+                    MAX_LEAF_TO_SPINE_BW = bw_config['max_leaf_to_spine_bw']
 
-    # The value `9600` is being used as the number of CPUs in a job. It is a
-    # parameter that represents the number of CPUs allocated to a specific
-    # job in the system. This value is used in the job scheduling and
-    # resource allocation process to determine the resource requirements of
-    # the job.
-    
-    # simulator_kubernetes.run()
-    
-    # ------ END PLEBISCITO SIMULATION -------
-    
-    
-    
-    
-    
-    
-    
+                    # Debugging: Print loaded configuration
+                    print("Loaded Configuration:")
+                    print(f"Replication: {rep}")
+                    print(f"Number of Jobs: {NUM_JOBS}")
+                    print(f"Number of Nodes: {NUM_NODES}")
+                    print(f"bw_config: {bw_config}")
+                    print(f"Number of Spine Switches: {NUM_SPINE_SWITCHES}")
+                    print(f"Number of Leaf Switches: {NUM_LEAF_SWITCHES}")
+                    print(f"Hosts per Leaf: {HOST_PER_LEAF}")
+                    print(f"Max Spine Capacity: {MAX_SPINE_CAPACITY}")
+                    print(f"Max Leaf Capacity: {MAX_LEAF_CAPACITY}")
+                    print(f"Max Node BW: {MAX_NODE_BW}")
+                    print(f"Max Leaf to Spine BW: {MAX_LEAF_TO_SPINE_BW}")
+                    print(f"Utilities: {config['utils']}")
+                    print(f"Scheduling Algorithms: {config['sched']}")
+                    print(f"With Bandwidth Options: {config['with_bw_options']}")
 
-
-
-
-
-
-
-
-
+                    simulator = Simulator_Plebiscito(
+                        filename=rep,
+                        n_nodes=NUM_NODES,
+                        n_jobs=NUM_JOBS,
+                        dataset=dataset_plebi_,
+                        scheduling_algorithm=scheduling_algorithm,
+                        utility=utility,
+                        debug_level=DebugLevel.TRACE,
+                        # enable_logging=True,
+                        with_bw=withbw_option,
+                        max_spine_capacity=MAX_SPINE_CAPACITY*100,
+                        max_leaf_capacity=MAX_LEAF_CAPACITY*100,
+                        max_node_bw=MAX_NODE_BW*100,
+                        max_leaf_to_spine_bw=MAX_LEAF_TO_SPINE_BW*100,
+                        num_spine_switches=NUM_SPINE_SWITCHES,
+                        num_leaf_switches=NUM_LEAF_SWITCHES,
+                        num_hosts_per_leaf=HOST_PER_LEAF
+ 
+                    )
+                    simulator.run()
+ 
+                    # Determine result filename based on bandwidth option
+                    result_filename = 'BW_results.csv' if withbw_option else 'results.csv'
+                    simulator.save_res(result_filename, rep)
+ 
