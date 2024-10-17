@@ -10,6 +10,8 @@ res/
 
 # C extensions
 *.so
+*.csv
+out*
 
 # Distribution / packaging
 .Python

@@ -823,8 +823,11 @@ class Simulator_Plebiscito:
             
         final_allocations['utility'] = self.utility
         final_allocations['jct_tot'] = time_instant 
-        
-        final_allocations['jct_avg'] = ( jobs_report['complete_time'] - jobs_report['submit_time'] ) / jobs_report['duration'] 
+        jobs_df = pd.DataFrame(jobs_report)
+        jobs_df['jct_final'] = (jobs_df['complete_time'] - jobs_df['submit_time']) / jobs_df['duration']
+
+        final_allocations['jct_mean'] = jobs_df['jct_final'].mean()
+        final_allocations['jct_median'] = jobs_df['jct_final'].median()
         
         if self.with_bw:
             csv_file = 'BW_final_allocations.csv'
