@@ -202,7 +202,7 @@ def add_job(csv_file, describe_dict, limit=None):
 
 
 
-def init_go_(num_jobs, filename, seed):
+def init_go_(num_jobs, filename, seed, fix_duration):
     # random.seed(int(time.time()))
     random.seed(int(seed))
     np.random.seed(int(seed))
@@ -255,21 +255,15 @@ def init_go_(num_jobs, filename, seed):
         # time_+=1
         job_dict['bw'] = 0
         job_dict['gpu_type'] = 'MISC'
-        # job_dict['duration'] = 1
-        # job_dict['duration'] = min(300, job_dict['duration'])
-        #job_dict["bw"] = 0 #float(job_dict["write_count"])
-        # job_dict["write_count"] = min(1000, int(float(job_dict["write_count"])) )
-        # job_dict["read_count"] =  min(1000, int(float(job_dict["read_count"]))  )
 
-        # job_dict['duration'] = 500
-        # if job_dict['duration']>1000:
-        #     job_dict['duration'] = random.randint(600,1000)
-
-        scaled_duration = int(job_dict['duration'] * max_allowed_duration / max_duration)
-        if scaled_duration<100 or scaled_duration > 2000:
-            job_dict['duration'] = max(scaled_duration*10, random.randint(100,1000))
+        if fix_duration:
+            job_dict['duration'] = 1000
         else:
-            job_dict['duration'] = scaled_duration
+            scaled_duration = int(job_dict['duration'] * max_allowed_duration / max_duration)
+            if scaled_duration<100 or scaled_duration > 2000:
+                job_dict['duration'] = max(scaled_duration*10, random.randint(100,1000))
+            else:
+                job_dict['duration'] = scaled_duration
 
         job_dict["final_node_allocation"] = []
         job_dict["final_gpu_allocation"] = []

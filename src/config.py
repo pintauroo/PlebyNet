@@ -16,6 +16,8 @@ class Utility(Enum):
     NET = 12
     SEQ = 13
     LIKELIHOOD = 14
+    DRF = 15
+    TETRIS = 16
        
 class DebugLevel(Enum):
     TRACE = 5

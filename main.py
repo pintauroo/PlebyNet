@@ -94,7 +94,10 @@ if __name__ == '__main__':
         'infinite_bw',
         'utils',
         'sched',
-        'with_bw_options'
+        'with_bw_options',
+        'discard_job',
+        'heterogeneous_nodes',
+        'fix_duration'
     ]
 
     # Validate configuration
@@ -116,11 +119,15 @@ if __name__ == '__main__':
     NUM_SPINE_SWITCHES = config['num_spine_switches']
     NUM_LEAF_SWITCHES = config['num_leaf_switches']
     HOST_PER_LEAF = config['host_per_leaf']
+    HETEROGENEOUS_NODES = config['heterogeneous_nodes']
+    FIX_DURATION = config['fix_duration']
 
 
+    # JOBS settings
+    DISCARD_JOB = config['discard_job']
 
     # Initialize dataset
-    dataset = init_go_(NUM_JOBS, CSV_FILE, rep)
+    dataset = init_go_(NUM_JOBS, CSV_FILE, rep, FIX_DURATION)
     df_dataset_full = pd.DataFrame(dataset)
 
     # Simulation Parameters from config
@@ -133,7 +140,7 @@ if __name__ == '__main__':
         random_state = int(time.time())
         # random_state = 42
         dataset_plebi_ = df_dataset_full.sample(n=NUM_JOBS, random_state=random_state)
-        # dataset_plebi_ = poisson_arrivals(dataset_plebi_, total_time=500, total_jobs=NUM_JOBS)
+        dataset_plebi_ = poisson_arrivals(dataset_plebi_, total_time=500, total_jobs=NUM_JOBS)
         print(dataset_plebi_.describe())
 
         dec_factor = [0]
@@ -162,6 +169,8 @@ if __name__ == '__main__':
                     print("Loaded Configuration:")
                     print(f"Replication: {rep}")
                     print(f"Number of Jobs: {NUM_JOBS}")
+                    print(f"Discard Jobs: {DISCARD_JOB}")
+                    print(f"HETEROGENEOUS NODES: {HETEROGENEOUS_NODES}")
                     print(f"Number of Nodes: {NUM_NODES}")
                     print(f"bw_config: {bw_config}")
                     print(f"Number of Spine Switches: {NUM_SPINE_SWITCHES}")
@@ -191,8 +200,9 @@ if __name__ == '__main__':
                         max_leaf_to_spine_bw=MAX_LEAF_TO_SPINE_BW*100,
                         num_spine_switches=NUM_SPINE_SWITCHES,
                         num_leaf_switches=NUM_LEAF_SWITCHES,
-                        num_hosts_per_leaf=HOST_PER_LEAF
- 
+                        num_hosts_per_leaf=HOST_PER_LEAF,
+                        discard_job=DISCARD_JOB,
+                        heterogeneous_nodes=HETEROGENEOUS_NODES
                     )
                     simulator.run()
  

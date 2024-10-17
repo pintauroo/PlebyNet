@@ -36,11 +36,23 @@ infinite_bw:
 
 # Simulation Parameters
 utils:
+  - "TETRIS"
+  - "DRF"
   - "UTIL"
+  - "LIKELIHOOD"
   - "SGF"
   - "LGF"
   - "SEQ"
-  - "LIKELIHOOD"
 sched:
   - "FIFO"
 
+# Jobs settings
+
+# discard_job: true
+discard_job: false
+
+heterogeneous_nodes: true
+# heterogeneous_nodes: false
+
+# fix_duration: true
+fix_duration: false

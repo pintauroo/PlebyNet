@@ -80,7 +80,9 @@ def plot_confidence_intervals_by_utility(csv_file, confidence=0.95):
         print(f"Dropped rows with unmapped utility types.")
 
     # Select the specified numerical columns
-    selected_columns = ['first_unassigned_gpu', 'first_unassigned_cpu', 'first_unassigned', 'jct', 'tot_unassigned']
+    # selected_columns = ['first_unassigned_gpu', 'first_unassigned_cpu', 'first_unassigned', 'jct', 'tot_unassigned']
+    selected_columns = ['first_unassigned_gpu', 'first_unassigned_cpu', 'first_unassigned', 'jct', 'tot_unassigned', 'discarded_jobs']
+
     
     # Verify that the selected columns exist in the dataframe
     missing_columns = [col for col in selected_columns if col not in df.columns]
@@ -221,7 +223,7 @@ def plot_cdf_by_utility(csv_file):
         print(f"Dropped rows with unmapped utility types.")
 
     # Select the specified numerical columns
-    selected_columns = ['first_unassigned_gpu', 'first_unassigned_cpu', 'first_unassigned', 'jct', 'tot_unassigned']
+    selected_columns = ['first_unassigned_gpu', 'first_unassigned_cpu', 'first_unassigned', 'jct', 'tot_unassigned', 'discarded_jobs']
     
     # Verify that the selected columns exist in the dataframe
     missing_columns = [col for col in selected_columns if col not in df.columns]

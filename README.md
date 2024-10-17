@@ -3,7 +3,12 @@
 
 Experiments in progress:
 
-Heterogeneous nodes | Jobs duration | 
+    |   Heterogeneous nodes |    Jobs duration |       measures             | Het JOBS
+1           yes                   not fixed        JCT, first_rejected          yes
+2           no                    not fixed        JCT, first_rejected
+3           yes                    fixed           JCT, first_rejected
+4           no                     fixed           JCT, first_rejected
+
 
 
 docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' bmv2-container

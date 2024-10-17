@@ -67,6 +67,8 @@ class Simulator_Plebiscito:
                  split = False, 
                  enable_logging = False, 
                  progress_flag = False, 
+                 discard_job = False,
+                 heterogeneous_nodes = False
                  ) -> None:   
         
         if utility == Utility.FGD and split:
@@ -94,6 +96,7 @@ class Simulator_Plebiscito:
         # self.alpha = alpha
         self.scheduling_algorithm = scheduling_algorithm
         self.utility = utility
+        self.discard_job = discard_job
         
         self.job_count = {}
         self.tot_assigned_jobs = 0
@@ -101,6 +104,7 @@ class Simulator_Plebiscito:
         self.tot_allocated_gpu = 0
         self.tot_allocated_bw = 0
         self.with_bw = with_bw
+        self.heterogeneous_nodes = heterogeneous_nodes
 
 
         # Generate TOPOLOGY
@@ -114,9 +118,11 @@ class Simulator_Plebiscito:
 
         # Generate Nodes
         self.nodes = []
-        self.gpu_types = generate_gpu_types(n_nodes)
+        if self.heterogeneous_nodes:
+            self.gpu_types = ['MISC'] * self.n_nodes
+        else:
+            self.gpu_types = generate_gpu_types(n_nodes)
         # print(self.gpu_types)
-        # gpu_type = 'MISC'
         for i in range(n_nodes):
             self.nodes.append(node(id=i, 
                                    max_bw=max_node_bw,
@@ -325,6 +331,8 @@ class Simulator_Plebiscito:
         final_allocations={
             "t_gpu": 0, # Dataset tot gpu
             "t_cpu": 0,
+            "gpu_discarded": 0, # Dataset tot gpu
+            "cpu_discarded": 0,
             "gpu": 0, # Allocated tot gpu
             "cpu": 0,
             "allocated": 0,
@@ -332,7 +340,7 @@ class Simulator_Plebiscito:
             "first_unassigned_gpu": 0,
             "first_unassigned_cpu": 0,
             "tot_unassigned": 0, 
-
+            "discarded_jobs":0,
             "utility": self.utility,
             "jct": 0
         }
@@ -357,12 +365,14 @@ class Simulator_Plebiscito:
 
             jobs_to_unallocate, running_jobs = job.extract_completed_jobs(running_jobs, time_instant)
             sim_stats = (
-                f"[SIM] time instant| {'time:':<5} {time_instant:<5} | "
+                f"[SIM] {'time instant:':<5} {time_instant:<5} | "
                 f"{'running jobs:':<15} {len(running_jobs):>5} | "
                 f"{'completed jobs:':<15} {completed_jobs:>5} | "
+                f"{'discarded jobs:':<15} {final_allocations['discarded_jobs']:>5} | "
                 f"{'queuing jobs:':<15} {len(jobs):>5} | "
                 f"{queuing_job_ids if len(queuing_job_ids) else 'None'}"
             )
+            
             print()
             print(sim_stats)
 
@@ -393,6 +403,11 @@ class Simulator_Plebiscito:
 
                     else:
                         running_jobs.at[index, 'current_duration'] += 1
+                        print(
+                            f"[SIM] job_id {rj['job_id']:10} | "
+                            f"completed {int(running_jobs.at[index, 'current_duration'] / rj['duration'] * 100):3}%"
+                            # f"completed {running_jobs.at[index, 'current_duration'], rj['duration']}%"
+                        )
                         
                 curr_running_jobs = list(running_jobs["job_id"])
                 self.collect_node_results(return_val, pd.DataFrame(), time.time()-start_time, time_instant, save_on_file=False)
@@ -549,6 +564,40 @@ class Simulator_Plebiscito:
                                 job_post_process_time.append(time.time() - t)
 
                                 # Deallocate unassigned jobs
+
+                                def u_job_handler(final_allocations, job_id, unassigned_ids, unassigned_jobs, u_jobs, all_jobs_ids, processed_jobs, tot_allocated_gpu, tot_allocated_cpu, discard_job=False, with_bw=False):
+                                    # Check and update 'first_unassigned' metrics if unassigned
+                                    if final_allocations['first_unassigned'] == 0:
+                                        final_allocations['first_unassigned'] = final_allocations['allocated']
+                                        final_allocations['first_unassigned_gpu'] = tot_allocated_gpu
+                                        final_allocations['first_unassigned_cpu'] = tot_allocated_cpu
+
+                                    # Add job_id to unassigned_ids and update unassigned count
+                                    if job_id not in unassigned_ids:
+                                        final_allocations['tot_unassigned'] += 1
+                                        unassigned_ids.append(job_id)
+
+                                    # Process jobs based on bandwidth conditions
+                                    if not with_bw:
+                                        u_df = pd.DataFrame(u_jobs)
+                                        
+                                        if discard_job:
+                                            # Discard job logic
+                                            all_jobs_ids.remove(job_id)
+                                            final_allocations['discarded_jobs'] += 1
+                                            final_allocations['gpu_discarded'] += (u_df['num_gpu'].iloc[0] * u_df['num_pod'].iloc[0]) / 100
+                                            final_allocations['cpu_discarded'] += (u_df['num_cpu'].iloc[0] * u_df['num_pod'].iloc[0]) / 100
+                                            processed_jobs = pd.concat([processed_jobs, u_df], sort=False)
+                                            print('[MSG] Do not enqueue to unassigned jobs list', final_allocations['gpu_discarded'], final_allocations['cpu_discarded'])
+                                        else:
+                                            # Enqueue the job
+                                            print('[MSG] Enqueue job', job_id)
+                                            unassigned_jobs = pd.concat([unassigned_jobs, u_df])
+
+                                    self.deallocate_jobs(progress_bid_events, queues, u_df, failure=True)
+
+                                    return unassigned_ids, unassigned_jobs, processed_jobs
+                                
                                 if u_jobs:
                                     # for uj in u_jobs:
                                     #     print('[SIM] Unallocated job_id:', uj['job_id'], 'pods' , uj['num_pod'], 'num_cpu' , uj['num_cpu'], 'num_gpu' ,uj['num_gpu'], 'read_count' ,uj['read_count'])
@@ -558,20 +607,8 @@ class Simulator_Plebiscito:
                                     print(output_string)
                                     print(sim_stats)
 
-                                    if final_allocations['first_unassigned'] == 0 :
-                                        final_allocations['first_unassigned']= final_allocations['allocated'] # Number of allocated till now
-                                        final_allocations['first_unassigned_gpu']=nmpds * num_gpu
-                                        final_allocations['first_unassigned_cpu']=nmpds * num_cpu
+                                    u_job_handler(final_allocations, job_id, unassigned_ids, unassigned_jobs, u_jobs, all_jobs_ids, processed_jobs, tot_allocated_gpu, tot_allocated_cpu, discard_job=False, with_bw=False)
 
-                                    if job_id not in unassigned_ids:
-                                        final_allocations['tot_unassigned']+=1 # increase unallocated number
-                                        unassigned_ids.append(job_id)
-
-                                    if not self.with_bw: # not for bw as we retry with lower bw!
-                                        print('appending job', job_id)
-                                        unassigned_jobs = pd.concat([unassigned_jobs, pd.DataFrame(u_jobs)])
-
-                                    self.deallocate_jobs(progress_bid_events, queues, pd.DataFrame(u_jobs), failure=True)
 
                                 def savemetrics(final_allocations, all_jobs_ids, job_id, nmpds, num_gpu, tot_assigned_jobs, tot_allocated_gpu,tot_allocated_cpu, subset):
                                         # Save metrics
@@ -614,7 +651,7 @@ class Simulator_Plebiscito:
                                             # tmp_bw = round(tmp_bw, 2)
                                             cnt_bw = 0
 
-                                            while not allocated_bw and cnt_bw<20:
+                                            while job_speedup[job_id]['alloc_bw'] >= job_speedup[job_id]['read_countnot']/2 and not allocated_bw and cnt_bw<20:
                                                 # print('allocationg', tmp_bw, cnt_bw)
                                                 cnt_bw+=1
                                                 allocated_bw = self.topology.allocate_ps_to_workers_single(
@@ -629,7 +666,7 @@ class Simulator_Plebiscito:
 
                                             if not allocated_bw:
                                                 print('[SIM] DLLCT insufficient BW')
-                                                self.deallocate_jobs(progress_bid_events, queues, pd.DataFrame(a_jobs), failure=True)
+                                                u_job_handler(final_allocations, job_id, unassigned_ids, unassigned_jobs, a_jobs, all_jobs_ids, processed_jobs, tot_allocated_gpu, tot_allocated_cpu, discard_job=False, with_bw=False)
                                             else:
                                                 savemetrics(final_allocations, all_jobs_ids, job_id, nmpds, num_gpu, tot_assigned_jobs, tot_allocated_gpu,tot_allocated_cpu, subset)
                                                 print('[SIM] BW LLCTD , final', 'reduced: ', cnt_bw, 'bw:', job_speedup[job_id])
@@ -761,14 +798,15 @@ class Simulator_Plebiscito:
                 print(self.dataset[self.dataset['job_id'] == j])
             assert False, f"Some jobs are missing: {all_jobs_ids} {len(all_new_jobs)} \n"
 
-        assert int(final_allocations['allocated']) == int(len(self.dataset)), (
-            f"{self.filename} Allocated items ({final_allocations['allocated']}) do not match the dataset length ({len(self.dataset)})."
+        assert int(final_allocations['allocated'] + final_allocations['discarded_jobs']) == int(len(self.dataset)), (
+            f"{self.filename} Allocated items ({int(final_allocations['allocated'] + final_allocations['discarded_jobs'])}) do not match the dataset length ({len(self.dataset)})."
         )
-        assert final_allocations['gpu'] == final_allocations['t_gpu'], (
-            f"{self.filename} GPU allocations ({final_allocations['gpu']}) do not match target GPU allocations ({final_allocations['t_gpu']})."
+        print(final_allocations['gpu'], final_allocations['gpu_discarded'])
+        assert int(final_allocations['gpu'] + final_allocations['gpu_discarded']) == int(final_allocations['t_gpu']), (
+            f"{self.filename} GPU allocations ({int(final_allocations['gpu'] + final_allocations['gpu_discarded'])}) do not match target GPU allocations ({final_allocations['t_gpu']})."
         )
-        assert final_allocations['cpu'] == final_allocations['t_cpu'], (
-            f"{self.filename} CPU allocations ({final_allocations['cpu']}) do not match target CPU allocations ({final_allocations['t_cpu']})."
+        assert int(final_allocations['cpu'] + final_allocations['cpu_discarded']) == int(final_allocations['t_cpu']), (
+            f"{self.filename} CPU allocations ({int(final_allocations['cpu'] + final_allocations['cpu_discarded']) }) do not match target CPU allocations ({final_allocations['t_cpu']})."
         )
 
         self.topology.assert_original_state()
@@ -779,7 +817,9 @@ class Simulator_Plebiscito:
         final_allocations['first_unassigned_cpu'] /= 100
             
         final_allocations['utility'] = self.utility
-        final_allocations['jct'] = time_instant 
+        final_allocations['jct_tot'] = time_instant 
+        
+        final_allocations['jct_avg'] = ( jobs_report['complete_time'] - jobs_report['submit_time'] ) / jobs_report['duration'] 
         
         if self.with_bw:
             csv_file = 'BW_final_allocations.csv'

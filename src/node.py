@@ -276,6 +276,23 @@ class node:
             return self.util_rate()
         elif self.utility == Utility.SEQ:
             return 100-self.id
+        elif self.utility == Utility.DRF:
+            return max( self.item['NN_gpu']/self.updated_gpu, self.item['NN_cpu']/self.updated_cpu)
+
+        elif self.utility == Utility.TETRIS:
+            # Task resource demands normalized by total node capacity
+            task_res_gpu = self.item['NN_gpu'] / self.initial_gpu  # Task's GPU requirement normalized
+            task_res_cpu = self.item['NN_cpu'] / self.initial_cpu  # Task's CPU requirement normalized
+
+            # Node's available resources normalized by total node capacity
+            node_res_gpu = self.updated_gpu / self.initial_gpu  # Node's available GPU normalized
+            node_res_cpu = self.updated_cpu / self.initial_cpu  # Node's available CPU normalized
+
+            # Dot product-like computation
+            return task_res_gpu * node_res_gpu + task_res_cpu * node_res_cpu
+        
+
+
 
         elif self.utility == Utility.POWER:
             pass # we need to define here the utility function
