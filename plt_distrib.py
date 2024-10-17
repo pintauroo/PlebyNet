@@ -64,7 +64,9 @@ def plot_confidence_intervals_by_utility(csv_file, confidence=0.95):
         'Utility.SGF': 'SGF',
         'Utility.LGF': 'LGF',
         'Utility.SEQ': 'SEQ',
-        'Utility.LIKELIHOOD': 'LIKELIHOOD'
+        'Utility.LIKELIHOOD': 'LIKELIHOOD',
+        'Utility.DRF': 'DRF',
+        'Utility.TETRIS': 'TETRIS'
     }
 
     # Rename utility types

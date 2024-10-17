@@ -370,6 +370,7 @@ class Simulator_Plebiscito:
                 f"{'completed jobs:':<15} {completed_jobs:>5} | "
                 f"{'discarded jobs:':<15} {final_allocations['discarded_jobs']:>5} | "
                 f"{'queuing jobs:':<15} {len(jobs):>5} | "
+                f"{'remaining jobs ids:':<15} {len(all_jobs_ids):>5} --- {str(all_jobs_ids):>5} | "
                 f"{queuing_job_ids if len(queuing_job_ids) else 'None'}"
             )
             
@@ -607,7 +608,7 @@ class Simulator_Plebiscito:
                                     print(output_string)
                                     print(sim_stats)
 
-                                    u_job_handler(final_allocations, job_id, unassigned_ids, unassigned_jobs, u_jobs, all_jobs_ids, processed_jobs, tot_allocated_gpu, tot_allocated_cpu, discard_job=False, with_bw=False)
+                                    unassigned_ids, unassigned_jobs, processed_jobs = u_job_handler(final_allocations, job_id, unassigned_ids, unassigned_jobs, u_jobs, all_jobs_ids, processed_jobs, tot_allocated_gpu, tot_allocated_cpu, discard_job=False, with_bw=False)
 
 
                                 def savemetrics(final_allocations, all_jobs_ids, job_id, nmpds, num_gpu, tot_assigned_jobs, tot_allocated_gpu,tot_allocated_cpu, subset):
@@ -666,7 +667,7 @@ class Simulator_Plebiscito:
 
                                             if not allocated_bw:
                                                 print('[SIM] DLLCT insufficient BW')
-                                                u_job_handler(final_allocations, job_id, unassigned_ids, unassigned_jobs, a_jobs, all_jobs_ids, processed_jobs, tot_allocated_gpu, tot_allocated_cpu, discard_job=False, with_bw=False)
+                                                unassigned_ids, unassigned_jobs, processed_jobs = u_job_handler(final_allocations, job_id, unassigned_ids, unassigned_jobs, a_jobs, all_jobs_ids, processed_jobs, tot_allocated_gpu, tot_allocated_cpu, discard_job=False, with_bw=False)
                                             else:
                                                 savemetrics(final_allocations, all_jobs_ids, job_id, nmpds, num_gpu, tot_assigned_jobs, tot_allocated_gpu,tot_allocated_cpu, subset)
                                                 print('[SIM] BW LLCTD , final', 'reduced: ', cnt_bw, 'bw:', job_speedup[job_id])
@@ -677,7 +678,9 @@ class Simulator_Plebiscito:
                                     elif allctd:
                                         print(allocations)
                                         savemetrics(final_allocations, all_jobs_ids, job_id, nmpds, num_gpu, tot_assigned_jobs, tot_allocated_gpu,tot_allocated_cpu, subset)
-                                        print(f"{"[SIM] (NO BW) LLCTD:":<25} {job_id:<10}")    
+                                        print(f"{"[SIM] (NO BW) LLCTD:":<25} {job_id:<10}")   
+                                    else:
+                                        print('[ERR]') 
                                         
 
 
@@ -712,7 +715,9 @@ class Simulator_Plebiscito:
             assigned_jobs = job.assign_job_start_time(assigned_jobs, time_instant)
             
             # Add unassigned jobs to the job queue
-            jobs = pd.concat([jobs, unassigned_jobs], sort=False)  
+            if not unassigned_jobs.empty:
+                print('[SIM] Unassigned jobs:',  len(unassigned_jobs))
+                jobs = pd.concat([jobs, unassigned_jobs], sort=False)  
             running_jobs = pd.concat([running_jobs, assigned_jobs], sort=False)
             processed_jobs = pd.concat([processed_jobs,assigned_jobs], sort=False)
             
@@ -752,7 +757,7 @@ class Simulator_Plebiscito:
             # Check if all jobs have been processed
             if len(processed_jobs) == len(self.dataset) and len(running_jobs) == 0 and len(jobs) == 0: # add to include also the final deallocation
             # if len(processed_jobs) == len(self.dataset) and len(jobs) == 0: # add to include also the final deallocation
-                print('!!!last allocated', time_instant, time_now, jobs_submitted, self.n_jobs)
+                print('[SIM] Last allocated! :)', time_instant, time_now, jobs_submitted, self.n_jobs)
                 job.extract_allocated_jobs(processed_jobs, self.filename + "_allocations.csv")
                 utils.verify_tot_res(self.nodes, running_jobs)
 
