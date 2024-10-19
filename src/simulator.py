@@ -68,7 +68,9 @@ class Simulator_Plebiscito:
                  enable_logging = False, 
                  progress_flag = False, 
                  discard_job = False,
-                 heterogeneous_nodes = False
+                 heterogeneous_nodes = False,
+                 fix_duration = False
+
                  ) -> None:   
         
         if utility == Utility.FGD and split:
@@ -81,10 +83,20 @@ class Simulator_Plebiscito:
                             level=debug_level.value, 
                             format='%(message)s', 
                             filemode='w')
-        if with_bw:
-            self.filename = "BW_" + str(filename) + "_" + utility.name + "_" + scheduling_algorithm.name
-        else:
-            self.filename = str(filename) + "_" + utility.name + "_" + scheduling_algorithm.name
+        # BUILD STRING NAME
+        conditions = [
+            ('FD_', 'NFD_', fix_duration), # Set fixed jobs duration
+            ('HN_', 'NHN_', heterogeneous_nodes), # Nodes are het
+            ('DJ_', 'NDJ_', discard_job), # discard unallocated job policy
+            ('BW', 'NBW', with_bw) # Bandwidth use
+        ]
+        parts = [true_part if condition else false_part for true_part, false_part, condition in conditions]
+        self.string_name = str(n_jobs)+'J_'+str(n_nodes)+'N_'
+        self.string_name += ''.join(parts)
+
+
+
+        self.filename = self.string_name + '_' + str(filename) + "_" + utility.name + "_" + scheduling_algorithm.name
             
         self.n_nodes = n_nodes
         self.n_jobs = n_jobs
@@ -830,12 +842,8 @@ class Simulator_Plebiscito:
         final_allocations['jct_mean'] = jobs_df['jct_final'].mean()
         final_allocations['jct_median'] = jobs_df['jct_final'].median()
         
-        if self.with_bw:
-            csv_file = 'BW_final_allocations.csv'
-        else:
-            # csv_file = 'fixed_duration_final_allocations.csv'
-            csv_file = 'final_allocations_100N_200J_NFD_HN_NDJ.csv'
-            # csv_file = '999final_allocations.csv'
+
+        csv_file = self.string_name+'_test_results.csv'
 
         # Check if the file already exists
         file_exists = os.path.isfile(csv_file)

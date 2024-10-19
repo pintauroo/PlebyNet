@@ -202,7 +202,8 @@ if __name__ == '__main__':
                         num_leaf_switches=NUM_LEAF_SWITCHES,
                         num_hosts_per_leaf=HOST_PER_LEAF,
                         discard_job=DISCARD_JOB,
-                        heterogeneous_nodes=HETEROGENEOUS_NODES
+                        heterogeneous_nodes=HETEROGENEOUS_NODES,
+                        fix_duration=FIX_DURATION
                     )
                     simulator.run()
  
