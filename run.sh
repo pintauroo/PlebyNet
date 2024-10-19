@@ -1,26 +1,33 @@
 #!/bin/bash
 
-# Define the start and end index
-# START_INDEX=100
-# END_INDEX=120
+# Total number of experiments
+TOTAL=100
 
-START_INDEX=100
-END_INDEX=140
-# Loop over the range
-for i in $(seq $START_INDEX $END_INDEX)
+# Maximum number of concurrent processes
+CONCURRENT=40
+
+# Starting index (adjust as needed)
+START_INDEX=1
+
+# Calculate the ending index
+END_INDEX=$((START_INDEX + TOTAL - 1))
+
+# Loop over the range of experiment indices
+for ((i=START_INDEX; i<=END_INDEX; i++))
 do
-    # Call the Python script in a new shell
-    bash -c "python3 main.py $i" > "out_$i" &
-    
-    # Sleep for 1 second before starting the next process
-    sleep 1
+    # Start the Python script in the background and redirect output
+    python3 main.py "$i" > "out_$i" &
+
+    # Get the current number of background jobs
+    CURRENT_JOBS=$(jobs -rp | wc -l)
+
+    # If the number of jobs reaches the concurrency limit, wait for any to finish
+    if [ "$CURRENT_JOBS" -ge "$CONCURRENT" ]; then
+        wait -n  # Wait for the next job to finish
+    fi
 done
 
-# Wait for all background processes to finish
+# Wait for all remaining background jobs to complete
 wait
 
-
-
-# commonpar,
-# width=1.2\linewidth,
-# height=.9\linewidth,
+echo "All $TOTAL experiments have completed."

@@ -569,9 +569,10 @@ class Simulator_Plebiscito:
                                 def u_job_handler(final_allocations, job_id, unassigned_ids, unassigned_jobs, u_jobs, all_jobs_ids, processed_jobs, tot_allocated_gpu, tot_allocated_cpu, discard_job=False, with_bw=False):
                                     # Check and update 'first_unassigned' metrics if unassigned
                                     if final_allocations['first_unassigned'] == 0:
+
                                         final_allocations['first_unassigned'] = final_allocations['allocated']
-                                        final_allocations['first_unassigned_gpu'] = tot_allocated_gpu
-                                        final_allocations['first_unassigned_cpu'] = tot_allocated_cpu
+                                        final_allocations['first_unassigned_gpu'] = final_allocations['gpu']
+                                        final_allocations['first_unassigned_cpu'] = final_allocations['cpu']
 
                                     # Add job_id to unassigned_ids and update unassigned count
                                     if job_id not in unassigned_ids:
@@ -833,7 +834,7 @@ class Simulator_Plebiscito:
             csv_file = 'BW_final_allocations.csv'
         else:
             # csv_file = 'fixed_duration_final_allocations.csv'
-            csv_file = 'final_allocations.csv'
+            csv_file = 'final_allocations_100N_200J_NFD_HN_NDJ.csv'
             # csv_file = '999final_allocations.csv'
 
         # Check if the file already exists

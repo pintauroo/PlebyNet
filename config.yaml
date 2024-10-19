@@ -5,8 +5,8 @@
 # output filename
 
 # General Settings
-num_jobs: 10
-num_nodes: 50
+num_jobs: 200
+num_nodes: 100
 n_failure: 0
 csv_file_path: "traces/pai/"
 csv_file: "cleaned_dfws.csv"
