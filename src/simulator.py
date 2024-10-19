@@ -341,8 +341,11 @@ class Simulator_Plebiscito:
         unassigned_ids = []
         completed_jobs = 0
         final_allocations={
+            "utility": self.utility,
             "t_gpu": 0, # Dataset tot gpu
             "t_cpu": 0,
+            'pods_avg': 0,
+            'pods_median': 0,
             "gpu_discarded": 0, # Dataset tot gpu
             "cpu_discarded": 0,
             "gpu": 0, # Allocated tot gpu
@@ -353,10 +356,13 @@ class Simulator_Plebiscito:
             "first_unassigned_cpu": 0,
             "tot_unassigned": 0, 
             "discarded_jobs":0,
-            "utility": self.utility,
-            "jct": 0
+            "jct_tot": 0,
+            "jct_mean": 0,
+            "jct_median": 0
         }
+                
         
+
         # all_jobs_ids = self.dataset[['job_id', 'submit_time']].to_dict(orient='records')
         # print(all_jobs_ids)
 
@@ -770,7 +776,8 @@ class Simulator_Plebiscito:
             # Check if all jobs have been processed
             if len(processed_jobs) == len(self.dataset) and len(running_jobs) == 0 and len(jobs) == 0: # add to include also the final deallocation
             # if len(processed_jobs) == len(self.dataset) and len(jobs) == 0: # add to include also the final deallocation
-                print('[SIM] Last allocated! :)', time_instant, time_now, jobs_submitted, self.n_jobs)
+                print('[SIM] Last allocated! :)')
+                print(sim_stats)
                 job.extract_allocated_jobs(processed_jobs, self.filename + "_allocations.csv")
                 utils.verify_tot_res(self.nodes, running_jobs)
 
@@ -789,8 +796,6 @@ class Simulator_Plebiscito:
         # Collect final node results
         # self.collect_node_results(return_val, pd.DataFrame(), time.time()-start_time, time_instant+1, save_on_file=True)
         
-
-
         # Save processed jobs to CSV
         jobs_report.to_csv(self.filename + "_jobs_report.csv")
         self.tot_assigned_jobs = tot_assigned_jobs
@@ -798,8 +803,7 @@ class Simulator_Plebiscito:
         self.tot_allocated_gpu = tot_allocated_gpu
         self.tot_allocated_bw = tot_allocated_bw
 
-
-
+        # Save test results
         t_gpu = sum(self.dataset['num_gpu'] * self.dataset['num_pod'])
         t_cpu = sum(self.dataset['num_cpu'] * self.dataset['num_pod'])
         final_allocations['t_gpu'] = t_gpu/100
@@ -808,7 +812,7 @@ class Simulator_Plebiscito:
         final_allocations['cpu'] /= 100
         
         # Assert section
-        print(sim_stats)
+
 
         if len(all_jobs_ids) != 0:
             print(f"Missing jobs {all_jobs_ids}")
@@ -829,7 +833,12 @@ class Simulator_Plebiscito:
 
         self.topology.assert_original_state()
 
-        # Save data section
+
+
+        del final_allocations['cpu']
+        del final_allocations['gpu']
+        final_allocations['pods_avg'] = self.dataset['num_pod'].mean()
+        final_allocations['pods_median'] = self.dataset['num_pod'].median()
 
         final_allocations['first_unassigned_gpu'] /= 100
         final_allocations['first_unassigned_cpu'] /= 100
@@ -841,7 +850,6 @@ class Simulator_Plebiscito:
 
         final_allocations['jct_mean'] = jobs_df['jct_final'].mean()
         final_allocations['jct_median'] = jobs_df['jct_final'].median()
-        
 
         csv_file = self.string_name+'_test_results.csv'
 
