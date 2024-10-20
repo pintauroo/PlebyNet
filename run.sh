@@ -17,6 +17,7 @@ for ((i=START_INDEX; i<=END_INDEX; i++))
 do
     # Start the Python script in the background and redirect output
     python3 main.py "$i" > "out_$i" &
+    sleep 1
 
     # Get the current number of background jobs
     CURRENT_JOBS=$(jobs -rp | wc -l)

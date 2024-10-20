@@ -346,6 +346,9 @@ class Simulator_Plebiscito:
             "t_cpu": 0,
             'pods_avg': 0,
             'pods_median': 0,
+            'sum_bid_utility':0,
+            'mean_bid_utility':0,
+            'median_bid_utility':0,
             "gpu_discarded": 0, # Dataset tot gpu
             "cpu_discarded": 0,
             "gpu": 0, # Allocated tot gpu
@@ -392,8 +395,8 @@ class Simulator_Plebiscito:
                 f"{queuing_job_ids if len(queuing_job_ids) else 'None'}"
             )
             
-            print()
-            print(sim_stats)
+            # print()
+            # print(sim_stats)
 
             jobs_report = pd.concat([jobs_report, jobs_to_unallocate])
             
@@ -414,19 +417,19 @@ class Simulator_Plebiscito:
                     speedup_info = job_speedup[job_id]
                     if self.with_bw:
                         running_jobs.at[index, 'current_duration'] += speedup_info['alloc_bw']/speedup_info['read_count']
-                        print(
-                            f"[SIM] job_id {rj['job_id']:10} | "
-                            f"speed_factor {speedup_info['alloc_bw']:12} | "
-                            f"completed {int(running_jobs.at[index, 'current_duration'] / rj['duration'] * 100):3}%"
-                        )
+                        # print(
+                        #     f"[SIM] job_id {rj['job_id']:10} | "
+                        #     f"speed_factor {speedup_info['alloc_bw']:12} | "
+                        #     f"completed {int(running_jobs.at[index, 'current_duration'] / rj['duration'] * 100):3}%"
+                        # )
 
                     else:
                         running_jobs.at[index, 'current_duration'] += 1
-                        print(
-                            f"[SIM] job_id {rj['job_id']:10} | "
-                            f"completed {int(running_jobs.at[index, 'current_duration'] / rj['duration'] * 100):3}%"
-                            # f"completed {running_jobs.at[index, 'current_duration'], rj['duration']}%"
-                        )
+                        # print(
+                        #     f"[SIM] job_id {rj['job_id']:10} | "
+                        #     f"completed {int(running_jobs.at[index, 'current_duration'] / rj['duration'] * 100):3}%"
+                        #     # f"completed {running_jobs.at[index, 'current_duration'], rj['duration']}%"
+                        # )
                         
                 curr_running_jobs = list(running_jobs["job_id"])
                 self.collect_node_results(return_val, pd.DataFrame(), time.time()-start_time, time_instant, save_on_file=False)
@@ -471,6 +474,8 @@ class Simulator_Plebiscito:
             
             unassigned_jobs = pd.DataFrame()
             assigned_jobs = pd.DataFrame()
+
+
             
             # Dispatch jobs
             if len(jobs_to_submit) > 0: 
@@ -508,8 +513,23 @@ class Simulator_Plebiscito:
                     time_now = 0 
                     cnt = 0
                     allctd = False
-                    self.dispatch_jobs(progress_bid_events, queues, subset, nmpds, read_count) 
-                    discard_flag = False
+
+                    # Check if enough resources to speed up the process!
+                    avail_cpu = [node.updated_cpu for node in self.nodes]
+                    avail_gpu = [node.updated_gpu for node in self.nodes]
+
+                    tot_available_cpu = np.sum(avail_cpu)
+                    tot_available_gpu = np.sum(avail_gpu)
+
+                    if tot_available_cpu>=num_cpu and tot_available_gpu>=num_gpu: 
+                        print(sim_stats)
+                        self.dispatch_jobs(progress_bid_events, queues, subset, nmpds, read_count) 
+                        discard_flag = False
+                    else:
+                        print('[SIM] No space for job', job_id)
+                        unassigned_jobs = pd.concat([unassigned_jobs, subset.iloc[[0]]], ignore_index=True)
+                        discard_flag = True
+
 
                     while not discard_flag and not allctd and cnt < 10:
 
@@ -798,6 +818,15 @@ class Simulator_Plebiscito:
         
         # Save processed jobs to CSV
         jobs_report.to_csv(self.filename + "_jobs_report.csv")
+
+
+
+        # Calculate utility stats
+        final_bid_series = jobs_report['final_bid']
+
+        # Calculate the sum for each list
+        sum_final_bid = final_bid_series.apply(lambda x: sum(x) if len(x) > 0 else 0)
+
         self.tot_assigned_jobs = tot_assigned_jobs
         self.tot_allocated_cpu = tot_allocated_cpu
         self.tot_allocated_gpu = tot_allocated_gpu
@@ -810,6 +839,9 @@ class Simulator_Plebiscito:
         final_allocations['t_cpu'] = t_cpu/100
         final_allocations['gpu'] /= 100
         final_allocations['cpu'] /= 100
+        final_allocations['sum_bid_utility'] = sum_final_bid.sum()
+        final_allocations['mean_bid_utility'] = sum_final_bid.mean()
+        final_allocations['median_bid_utility'] =  sum_final_bid.median()
         
         # Assert section
 

@@ -140,7 +140,7 @@ def verify_tot_res(nodes, allocated_jobs, per_node_cpu=9600, per_node_gpu=800):
 
     # Early exit if CPU mismatch is detected
     # if expected_available_cpu != tot_available_cpu:
-    print(tot_available_cpu,  tot_allocated_cpu)
+    # print(tot_available_cpu,  tot_allocated_cpu)
     if tot_available_cpu != tot_allocated_cpu:
         raise ValueError(
             f"CPU allocation mismatch:\n"
@@ -396,6 +396,7 @@ def calculate_utility(nodes, num_edges, jobs, time_instant, filename, gpu_types,
 
         if flag:
             job["final_node_allocation"] = nodes[node_with_bid].bids[j]['auction_id']
+            job["final_bid"] = nodes[node_with_bid].bids[j]['bid']
             # job["final_gpu_allocation"] = allocation_to_gpu_type(nodes[node_with_bid].bids[j]['auction_id'], gpu_types=gpu_types)
             
             lower_speedup = 10000
