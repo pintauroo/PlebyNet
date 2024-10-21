@@ -390,7 +390,7 @@ def calculate_utility(nodes, num_edges, jobs, time_instant, filename, gpu_types,
         if node_with_bid != None and float('-inf') not in nodes[node_with_bid].bids[j]['auction_id'] and not unmatch:
             count_success += 1
             valid_bids[j] = nodes[node_with_bid].bids[j]['auction_id']
-            logging.info(f"Job {j} assignment {nodes[node_with_bid].bids[j]['auction_id']}")
+            # logging.info(f"[MSG] Job {j} assignment {nodes[node_with_bid].bids[j]['auction_id']}\n")
         else:
             flag = False 
 

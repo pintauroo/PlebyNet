@@ -393,21 +393,22 @@ class Simulator_Plebiscito:
             # Extract completed jobs
             jobs_to_unallocate, running_jobs = job.extract_completed_jobs(running_jobs, time_instant)
             sim_stats = (
-                f"[SIM] {'time instant:':<5} {time_instant:<5} | "
+                f"\n[SIM] {'time instant:':<5} {time_instant:<5} | "
                 f"{'running jobs:':<15} {len(running_jobs):>5} | "
                 f"{'completed jobs:':<15} {completed_jobs:>5} | "
                 f"{'discarded jobs:':<15} {final_allocations['discarded_jobs']:>5} | "
                 f"{'queuing jobs:':<15} {len(jobs):>5} | "
-                f"{'remaining jobs ids:':<15} {len(all_jobs_ids):>5} --- {str(all_jobs_ids):>5} | "
+                f"{'remaining jobs ids:':<15} {len(all_jobs_ids):>5} |" # --- {str(all_jobs_ids):>5} | "
                 f"{queuing_job_ids if len(queuing_job_ids) else 'None'}"
             )
+            logger.debug(sim_stats)
 
             jobs_report = pd.concat([jobs_report, jobs_to_unallocate])
 
             # Deallocate completed jobs
             if len(jobs_to_unallocate) > 0:
                 logger.info(f"Deallocating completed jobs! {list(jobs_to_unallocate['job_id'])}")
-                logger.debug(sim_stats)
+                # logger.debug(sim_stats)
                 self.deallocate_jobs(progress_bid_events, queues, jobs_to_unallocate)
                 completed_jobs += len(jobs_to_unallocate)
 
@@ -431,6 +432,7 @@ class Simulator_Plebiscito:
             # Select new jobs for the current time instant
             new_jobs = job.select_jobs(self.dataset, time_instant)
             if len(new_jobs):
+                # logger.info(f"\n[SIM] New jobs: {new_jobs['job_id'].tolist()} ")
                 all_new_jobs.append(new_jobs['job_id'].tolist())
             jobs = pd.concat([jobs, new_jobs], sort=False)
 
@@ -464,15 +466,18 @@ class Simulator_Plebiscito:
 
             running_jobs_different = set(prev_running_jobs) != set(curr_running_jobs)
             # print(f"Running jobs different: {running_jobs_different}")
+            jobs_to_submit = job.create_job_batch(jobs, len(jobs))
 
             # Final decision
-            if jobs_different or running_jobs_different:
-                jobs_to_submit = job.create_job_batch(jobs, len(jobs))
+            if len(jobs_to_submit) and jobs_different or running_jobs_different:
+
                 start_id = 0
 
                 while start_id < len(jobs_to_submit):
+
                     jobs_submitted += 1
                     subset = jobs_to_submit.iloc[start_id:start_id + batch_size]
+
 
                     row = subset.iloc[0]
                     job_id = int(subset['job_id'].iloc[0])
@@ -488,9 +493,9 @@ class Simulator_Plebiscito:
                             'alloc_bw': read_count
                         }
 
-                    output_string = (f"** id: {job_id}, gpu: {num_gpu}, cpu: {num_cpu}, num_pod: {nmpds}, "
+                    output_string = (f"job_id: {job_id}, gpu: {num_gpu}, cpu: {num_cpu}, num_pod: {nmpds}, "
                                      f"write_count: {write_count}, read_count: {read_count}")
-                    logger.info(output_string)
+
 
                     t = time.time()
                     time_now = 0
@@ -505,11 +510,12 @@ class Simulator_Plebiscito:
                     tot_available_gpu = np.sum(avail_gpu)
 
                     if tot_available_cpu >= num_cpu * nmpds and tot_available_gpu >= num_gpu * nmpds:
-                        logger.info(f"\n--------------- Submitting job --------------- {new_jobs['job_id'].tolist()}")
+                        # logger.debug(sim_stats)
+                        logger.info(f"[SIM] Allocating job: {output_string} ")
                         self.dispatch_jobs(progress_bid_events, queues, subset, nmpds, read_count)
                         discard_flag = False
                     else:
-                        logger.warning(f"No space for job {job_id}")
+                        logger.warning(f"No space for job {output_string}")
                         unassigned_jobs = pd.concat([unassigned_jobs, subset.iloc[[0]]], ignore_index=True)
                         discard_flag = True
 
@@ -621,7 +627,6 @@ class Simulator_Plebiscito:
                                 if u_jobs:
                                     allocations = node.bids[job_id]['auction_id']
                                     logger.info(f"Unallocated job_id: {allocations} {output_string}")
-                                    logger.debug(sim_stats)
 
                                     unassigned_ids, unassigned_jobs, processed_jobs = u_job_handler(
                                         final_allocations, job_id, unassigned_ids, unassigned_jobs, u_jobs,
@@ -640,11 +645,10 @@ class Simulator_Plebiscito:
                                     tot_allocated_cpu += int(subset['num_cpu'].iloc[0]) * int(subset['num_pod'].iloc[0])
 
                                     # Log the formatted log entry
-                                    logger.debug(sim_stats)
 
                                     try:
                                         all_jobs_ids.remove(job_id)
-                                        logger.info(f"Job ID {job_id} has been removed. remaining {len(all_jobs_ids)}")
+                                        # logger.info(f"Job ID {job_id} has been removed. remaining {len(all_jobs_ids)}")
                                     except ValueError:
                                         logger.warning(f"Job ID {job_id} not found in the list.")
 
@@ -696,7 +700,7 @@ class Simulator_Plebiscito:
                                     elif allctd:
                                         savemetrics(final_allocations, all_jobs_ids, job_id, nmpds, num_gpu,
                                                    tot_assigned_jobs, tot_allocated_gpu, tot_allocated_cpu, subset)
-                                        logger.info(f"{'[SIM] (NO BW) LLCTD:':<25} {job_id:<10}")
+                                        logger.info(f"{'[SIM] (NO BW) LLCTD:':<25}  {job_id:<10} {allocations}\n")
                                     else:
                                         logger.error('[ERR]')
 
@@ -712,14 +716,12 @@ class Simulator_Plebiscito:
                                 else:
                                     unassigned_jobs = pd.concat([unassigned_jobs, pd.DataFrame(u_jobs)])
                                     logger.warning(f"(BW) NOT LLCT {job_id}")
-                                    logger.debug(sim_stats)
 
                                     job_speedup[job_id]['alloc_bw'] = job_speedup[job_id]['read_count']
                                     discard_flag = True
                                     break
                             else:
                                 logger.warning(f"{'[SIM] (NO BW) NOT LLCT:':<25} {job_id:<10}")
-                                logger.debug(sim_stats)
                                 break
 
                     start_id += batch_size
