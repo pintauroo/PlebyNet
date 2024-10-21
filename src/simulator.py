@@ -393,15 +393,15 @@ class Simulator_Plebiscito:
             # Extract completed jobs
             jobs_to_unallocate, running_jobs = job.extract_completed_jobs(running_jobs, time_instant)
             sim_stats = (
-                f"\n[SIM] {'time instant:':<5} {time_instant:<5} | "
+                f"[SIM] {'time instant:':<5} {time_instant:<5} | "
                 f"{'running jobs:':<15} {len(running_jobs):>5} | "
                 f"{'completed jobs:':<15} {completed_jobs:>5} | "
                 f"{'discarded jobs:':<15} {final_allocations['discarded_jobs']:>5} | "
-                f"{'queuing jobs:':<15} {len(jobs):>5} | "
+                # f"{'queuing jobs:':<15} {len(jobs):>5} | "
                 f"{'remaining jobs ids:':<15} {len(all_jobs_ids):>5} |" # --- {str(all_jobs_ids):>5} | "
-                f"{queuing_job_ids if len(queuing_job_ids) else 'None'}"
+                # f"{queuing_job_ids if len(queuing_job_ids) else 'None'}"
             )
-            logger.debug(sim_stats)
+            # logger.debug(sim_stats)
 
             jobs_report = pd.concat([jobs_report, jobs_to_unallocate])
 
@@ -441,6 +441,7 @@ class Simulator_Plebiscito:
 
             # Update current job list
             curr_job_list = list(jobs["job_id"]) if len(jobs) > 0 else []
+            # logger.info(curr_job_list)
 
             # Dispatch jobs
 
@@ -469,7 +470,10 @@ class Simulator_Plebiscito:
             jobs_to_submit = job.create_job_batch(jobs, len(jobs))
 
             # Final decision
-            if len(jobs_to_submit) and jobs_different or running_jobs_different:
+            if len(jobs_to_submit) and (jobs_different or running_jobs_different):
+                logger.debug(f"\n{sim_stats}"
+                            f"{'queuing jobs:':<15} {len(jobs_to_submit):>5} | "
+                            f"{'jobs to submit:':<15} {jobs_to_submit['job_id'].tolist()}")
 
                 start_id = 0
 
@@ -495,6 +499,7 @@ class Simulator_Plebiscito:
 
                     output_string = (f"job_id: {job_id}, gpu: {num_gpu}, cpu: {num_cpu}, num_pod: {nmpds}, "
                                      f"write_count: {write_count}, read_count: {read_count}")
+                    # logger.info(f"JOB: {output_string}")
 
 
                     t = time.time()
@@ -511,11 +516,11 @@ class Simulator_Plebiscito:
 
                     if tot_available_cpu >= num_cpu * nmpds and tot_available_gpu >= num_gpu * nmpds:
                         # logger.debug(sim_stats)
-                        logger.info(f"[SIM] Allocating job: {output_string} ")
+                        logger.info(f"[MSG] Allocating job: {output_string}")
                         self.dispatch_jobs(progress_bid_events, queues, subset, nmpds, read_count)
                         discard_flag = False
                     else:
-                        logger.warning(f"No space for job {output_string}")
+                        # logger.warning(f"No space for job {output_string}")
                         unassigned_jobs = pd.concat([unassigned_jobs, subset.iloc[[0]]], ignore_index=True)
                         discard_flag = True
 
@@ -700,7 +705,7 @@ class Simulator_Plebiscito:
                                     elif allctd:
                                         savemetrics(final_allocations, all_jobs_ids, job_id, nmpds, num_gpu,
                                                    tot_assigned_jobs, tot_allocated_gpu, tot_allocated_cpu, subset)
-                                        logger.info(f"{'[SIM] (NO BW) LLCTD:':<25}  {job_id:<10} {allocations}\n")
+                                        logger.info(f"{'[MSG] (NO BW) LLCTD:':<25}  {job_id:<10} {allocations}")
                                     else:
                                         logger.error('[ERR]')
 
@@ -726,20 +731,29 @@ class Simulator_Plebiscito:
 
                     start_id += batch_size
 
-            # Assign start time to assigned jobs
-            assigned_jobs = job.assign_job_start_time(assigned_jobs, time_instant)
+            else:
+                if len(jobs_to_submit):
+                    logger.info('RESTORING JOB LIST!')
+                    jobs = pd.concat([jobs, jobs_to_submit], ignore_index=True, sort=False)
 
-            # Add unassigned jobs to the job queue
+
+            # Handle Unassigned Jobs
             if not unassigned_jobs.empty:
-                logger.info(f"Unassigned jobs: {len(unassigned_jobs)}")
-                jobs = pd.concat([jobs, unassigned_jobs], sort=False)
-            running_jobs = pd.concat([running_jobs, assigned_jobs], sort=False)
-            processed_jobs = pd.concat([processed_jobs, assigned_jobs], sort=False)
+                logger.info(f"Unassigned jobs: {len(unassigned_jobs)} | {unassigned_jobs['job_id'].tolist()}")
+                jobs = pd.concat([jobs, unassigned_jobs], ignore_index=True, sort=False)
+                unassigned_jobs = pd.DataFrame()
 
-            unassigned_jobs = pd.DataFrame()
-            assigned_jobs = pd.DataFrame()
-
-            running_jobs = pd.concat([running_jobs, assigned_jobs], sort=False)
+            # Handle Assigned Jobs
+            if not assigned_jobs.empty:
+                # Assign start time to the jobs
+                assigned_jobs = job.assign_job_start_time(assigned_jobs, time_instant)
+                
+                # Move jobs to running_jobs and processed_jobs
+                running_jobs = pd.concat([running_jobs, assigned_jobs], ignore_index=True, sort=False)
+                processed_jobs = pd.concat([processed_jobs, assigned_jobs], ignore_index=True, sort=False)
+                
+                # Reset assigned_jobs after processing
+                assigned_jobs = pd.DataFrame()
 
             self.collect_node_results(return_val, pd.DataFrame(), time.time() - start_time_loop, time_instant, save_on_file=True)
 
