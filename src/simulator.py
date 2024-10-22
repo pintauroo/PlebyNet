@@ -442,10 +442,7 @@ class Simulator_Plebiscito:
             # Update current job list
             curr_job_list = list(jobs["job_id"]) if len(jobs) > 0 else []
 
-            jobs_to_submit = job.create_job_batch(jobs, len(jobs))
-
-
-            if prev_job_list != curr_job_list or prev_running_jobs != curr_running_jobs:
+            if sorted(prev_job_list) != sorted(curr_job_list) or sorted(prev_running_jobs) != sorted(curr_running_jobs):
                 # Create job batch only when there are differences
                 jobs_to_submit = job.create_job_batch(jobs, len(jobs))
             else:
