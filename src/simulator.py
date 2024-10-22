@@ -441,36 +441,17 @@ class Simulator_Plebiscito:
 
             # Update current job list
             curr_job_list = list(jobs["job_id"]) if len(jobs) > 0 else []
-            # logger.info(curr_job_list)
 
-            # Dispatch jobs
-
-
-            # Convert None to empty lists and ensure correct types
-            prev_job_list = prev_job_list if isinstance(prev_job_list, list) else []
-            curr_job_list = curr_job_list if isinstance(curr_job_list, list) else []
-
-            # Debugging job lists
-            # print(f"Previous job list ({len(prev_job_list)} items): {prev_job_list}")
-            # print(f"Current job list ({len(curr_job_list)} items): {curr_job_list}")
-
-            # Compare job lists
-            jobs_different = set(prev_job_list) != set(curr_job_list)
-            # print(f"Jobs different: {jobs_different}")
-
-            # Repeat for running jobs
-            prev_running_jobs = prev_running_jobs if isinstance(prev_running_jobs, list) else []
-            curr_running_jobs = curr_running_jobs if isinstance(curr_running_jobs, list) else []
-
-            # print(f"Previous running jobs ({len(prev_running_jobs)} items): {prev_running_jobs}")
-            # print(f"Current running jobs ({len(curr_running_jobs)} items): {curr_running_jobs}")
-
-            running_jobs_different = set(prev_running_jobs) != set(curr_running_jobs)
-            # print(f"Running jobs different: {running_jobs_different}")
             jobs_to_submit = job.create_job_batch(jobs, len(jobs))
 
-            # Final decision
-            if len(jobs_to_submit) and (jobs_different or running_jobs_different):
+
+            if prev_job_list != curr_job_list or prev_running_jobs != curr_running_jobs:
+                # Create job batch only when there are differences
+                jobs_to_submit = job.create_job_batch(jobs, len(jobs))
+            else:
+                jobs_to_submit = []  # Efficient empty list creation
+
+            if len(jobs_to_submit):
                 logger.debug(f"\n{sim_stats}"
                             f"{'queuing jobs:':<15} {len(jobs_to_submit):>5} | "
                             f"{'jobs to submit:':<15} {jobs_to_submit['job_id'].tolist()}")
@@ -507,20 +488,15 @@ class Simulator_Plebiscito:
                     cnt = 0
                     allctd = False
 
-                    # Check if enough resources to speed up the process!
-                    avail_cpu = [node.updated_cpu for node in self.nodes]
-                    avail_gpu = [node.updated_gpu for node in self.nodes]
-
-                    tot_available_cpu = np.sum(avail_cpu)
-                    tot_available_gpu = np.sum(avail_gpu)
-
-                    if tot_available_cpu >= num_cpu * nmpds and tot_available_gpu >= num_gpu * nmpds:
-                        # logger.debug(sim_stats)
+                    if (np.sum(node.updated_cpu for node in self.nodes) >= num_cpu * nmpds and
+                        np.sum(node.updated_gpu for node in self.nodes) >= num_gpu * nmpds and
+                        any(node.updated_cpu >= num_cpu for node in self.nodes) and
+                        any(node.updated_gpu >= num_gpu for node in self.nodes)
+                    ):
                         logger.info(f"[MSG] Allocating job: {output_string}")
                         self.dispatch_jobs(progress_bid_events, queues, subset, nmpds, read_count)
                         discard_flag = False
                     else:
-                        # logger.warning(f"No space for job {output_string}")
                         unassigned_jobs = pd.concat([unassigned_jobs, subset.iloc[[0]]], ignore_index=True)
                         discard_flag = True
 
@@ -730,12 +706,6 @@ class Simulator_Plebiscito:
                                 break
 
                     start_id += batch_size
-
-            else:
-                if len(jobs_to_submit):
-                    logger.info('RESTORING JOB LIST!')
-                    jobs = pd.concat([jobs, jobs_to_submit], ignore_index=True, sort=False)
-
 
             # Handle Unassigned Jobs
             if not unassigned_jobs.empty:
