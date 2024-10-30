@@ -5,8 +5,8 @@
 # output filename
 
 # General Settings
-num_jobs: 200
-num_nodes: 100
+num_jobs: 100
+num_nodes: 80
 n_failure: 0
 csv_file_path: "traces/pai/"
 csv_file: "cleaned_dfws.csv"
@@ -51,8 +51,8 @@ sched:
 # discard_job: true
 discard_job: false
 
-heterogeneous_nodes: true
-# heterogeneous_nodes: false
+# heterogeneous_nodes: true
+heterogeneous_nodes: false
 
 # fix_duration: true
 fix_duration: false

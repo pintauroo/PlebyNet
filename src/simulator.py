@@ -76,7 +76,7 @@ class Simulator_Plebiscito:
         if utility == Utility.FGD and split:
             print(f"FGD utility and split are not supported simultaneously. Exiting...")
             os._exit(-1)
-        
+        self.execution = filename
 
         # BUILD STRING NAME
         conditions = [
@@ -89,6 +89,7 @@ class Simulator_Plebiscito:
         self.string_name = str(n_jobs)+'J_'+str(n_nodes)+'N_'
         self.string_name += ''.join(parts)
         self.filename = self.string_name + '_' + str(filename) + "_" + utility.name + "_" + scheduling_algorithm.name
+        dataset.to_csv(self.filename+'_dataset.csv', index=False)
 
         logging.getLogger().handlers = []
         logging.addLevelName(DebugLevel.TRACE, "TRACE")
@@ -342,28 +343,33 @@ class Simulator_Plebiscito:
         unassigned_ids = []
         completed_jobs = 0
         final_allocations = {
+            "execution": self.execution,
             "utility": self.utility,
-            "t_gpu": 0,  # Dataset tot gpu
-            "t_cpu": 0,
-            'pods_avg': 0,
-            'pods_median': 0,
-            'sum_bid_utility': 0,
-            'mean_bid_utility': 0,
-            'median_bid_utility': 0,
-            "gpu_discarded": 0,  # Dataset tot gpu
-            "cpu_discarded": 0,
-            "gpu": 0,  # Allocated tot gpu
-            "cpu": 0,
-            "allocated": 0,
-            "first_unassigned": 0,  # How many jobs before the first failed allocation
-            "first_unassigned_gpu": 0,
-            "first_unassigned_cpu": 0,
-            "tot_unassigned": 0,
-            "discarded_jobs": 0,
-            "jct_tot": 0,
-            "jct_mean": 0,
-            "jct_median": 0
+            "t_gpu": 0,  # Total GPU from dataset
+            "t_cpu": 0,  # Total CPU from dataset
+            "t_gpu_nodes": sum(node.initial_gpu for node in self.nodes),  # Sum of initial GPU allocations across nodes
+            "t_cpu_nodes": sum(node.initial_cpu for node in self.nodes),  # Assuming initial CPU count is needed
+            "pods_avg": 0,  # Placeholder for average pods if relevant
+            "pods_median": 0,  # Placeholder for median pods if relevant
+            "sum_bid_utility": 0,  # Sum of bid utilities
+            "mean_bid_utility": 0,  # Mean of bid utilities
+            "median_bid_utility": 0,  # Median of bid utilities
+            "gpu_discarded": 0,  # Total discarded GPU from dataset
+            "cpu_discarded": 0,  # Total discarded CPU from dataset
+            "gpu": 0,  # Total allocated GPU
+            "cpu": 0,  # Total allocated CPU
+            "allocated": 0,  # Count of allocated resources
+            "first_unassigned": 0,  # Count until first unassigned job
+            "first_unassigned_gpu": 0,  # Count of unassigned GPU jobs
+            "first_unassigned_cpu": 0,  # Count of unassigned CPU jobs
+            "tot_unassigned": 0,  # Total unassigned resources
+            "discarded_jobs": 0,  # Total discarded jobs
+            "jct_tot": 0,  # Total job completion time (JCT)
+            "jct_mean": 0,  # Mean job completion time
+            "jct_median": 0,  # Median job completion time
+            "jct":[]
         }
+
 
         all_jobs_ids = self.dataset['job_id'].tolist()
         all_new_jobs = []
@@ -375,7 +381,7 @@ class Simulator_Plebiscito:
         unassigned_jobs = pd.DataFrame()
         assigned_jobs = pd.DataFrame()
 
-        while not done and time_instant < 10000000:
+        while not done and time_instant < 10000:
             start_time_loop = time.time()
 
             # Update previous lists
@@ -802,10 +808,9 @@ class Simulator_Plebiscito:
         final_allocations['utility'] = self.utility
         final_allocations['jct_tot'] = time_instant
         jobs_df = pd.DataFrame(jobs_report)
-        jobs_df['jct_final'] = (jobs_df['complete_time'] - jobs_df['submit_time']) / jobs_df['duration']
-
-        final_allocations['jct_mean'] = jobs_df['jct_final'].mean()
-        final_allocations['jct_median'] = jobs_df['jct_final'].median()
+        final_allocations['jct'] = ((jobs_df['complete_time'] - jobs_df['submit_time']) / jobs_df['duration']).fillna(0).tolist()
+        final_allocations['jct_mean'] = jobs_df['jct'].mean()
+        final_allocations['jct_median'] = jobs_df['jct'].median()
 
         csv_file = self.string_name + '_test_results.csv'
 

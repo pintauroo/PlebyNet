@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Total number of experiments
-TOTAL=100
+TOTAL=50
 
 # Maximum number of concurrent processes
 CONCURRENT=40
