@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Total number of experiments
-TOTAL=50
+TOTAL=10
 
 # Maximum number of concurrent processes
-CONCURRENT=40
+CONCURRENT=10
 
 # Starting index (adjust as needed)
 START_INDEX=1

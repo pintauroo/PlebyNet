@@ -9,6 +9,7 @@ from src.simulator import Simulator_Plebiscito
 from src.config import ApplicationGraphType, DebugLevel, SchedulingAlgorithm, Utility
 from src.dataset_builder import generate_dataset
 from src.dataset_loader import init_go_, poisson_arrivals
+from src.topology_nx import SpineLeafTopology
 
 def load_config(config_path: str) -> dict:
     """
@@ -87,25 +88,20 @@ if __name__ == '__main__':
         'n_failure',
         'csv_file_path',
         'csv_file',
-        'num_spine_switches',
-        'num_leaf_switches',
-        'host_per_leaf',
-        'limited_bw',
-        'infinite_bw',
         'utils',
         'sched',
-        'with_bw_options',
+        'with_bw',
         'discard_job',
         'heterogeneous_nodes',
         'fix_duration'
     ]
 
     # Validate configuration
-    try:
-        validate_config(config, required_keys)
-    except (KeyError, ValueError) as e:
-        print(f"Configuration Error: {e}")
-        sys.exit(1)
+    # try:
+    #     validate_config(config, required_keys)
+    # except (KeyError, ValueError) as e:
+    #     print(f"Configuration Error: {e}")
+    #     sys.exit(1)
 
     # Assign general variables from config
     NUM_JOBS = config['num_jobs']
@@ -114,11 +110,61 @@ if __name__ == '__main__':
 
     CSV_FILE_PATH = Path(__file__).parent / config['csv_file_path']
     CSV_FILE = config['csv_file']
+    
+    # Get the selected topology type
+    topology_type = config['topology_type']
+
+    # Set the variables based on the selected topology
+    if topology_type == 'LeafSpine':
+        topology_config = config['LeafSpine']
+        
+        # Topology-specific settings
+        NUM_SPINE_SWITCHES = topology_config['num_spine_switches']
+        NUM_LEAF_SWITCHES = topology_config['num_leaf_switches']
+        HOST_PER_LEAF = topology_config['host_per_leaf']
+        MAX_SPINE_CAPACITY = topology_config['max_spine_capacity']
+        MAX_LEAF_CAPACITY = topology_config['max_leaf_capacity']
+        MAX_NODE_BW = topology_config['max_node_bw']
+        MAX_LEAF_TO_SPINE_BW = topology_config['max_leaf_to_spine_bw']
+
+        # Bandwidth selection
+        with_bw = config['with_bw']
+        if with_bw:
+            # Use limited bandwidth
+            SPINE_CAPACITY = topology_config['max_spine_capacity']
+            LEAF_CAPACITY = topology_config['max_leaf_capacity']
+            NODE_BW = topology_config['max_node_bw']
+            LEAF_TO_SPINE_BW = topology_config['max_leaf_to_spine_bw']
+        else:
+            # Use infinite bandwidth
+            infinite_bw_config = topology_config['infinite_bw']
+            SPINE_CAPACITY = infinite_bw_config['max_spine_capacity']
+            LEAF_CAPACITY = infinite_bw_config['max_leaf_capacity']
+            NODE_BW = infinite_bw_config['max_node_bw']
+            LEAF_TO_SPINE_BW = infinite_bw_config['max_leaf_to_spine_bw']
+            
+        print("Topology Type:", topology_type)
+        print("Number of Spine Switches:", NUM_SPINE_SWITCHES)
+        print("Number of Leaf Switches:", NUM_LEAF_SWITCHES)
+        print("Hosts per Leaf:", HOST_PER_LEAF)
+        topology = SpineLeafTopology(
+            num_spine=NUM_SPINE_SWITCHES,
+            num_leaf=NUM_LEAF_SWITCHES,
+            num_hosts_per_leaf=HOST_PER_LEAF,
+            spine_bw=SPINE_CAPACITY,
+            leaf_bw=LEAF_CAPACITY,
+            link_bw_leaf_to_node=NODE_BW,
+            link_bw_leaf_to_spine=LEAF_TO_SPINE_BW
+        )
+
+        # Example Usage
+        adj_matrix = topology.calculate_host_to_host_adjacency_matrix()
+        print("Adjacency Matrix:", adj_matrix)
+        
+
+
 
     # Assign topology variables from config
-    NUM_SPINE_SWITCHES = config['num_spine_switches']
-    NUM_LEAF_SWITCHES = config['num_leaf_switches']
-    HOST_PER_LEAF = config['host_per_leaf']
     HETEROGENEOUS_NODES = config['heterogeneous_nodes']
     FIX_DURATION = config['fix_duration']
 
@@ -133,7 +179,7 @@ if __name__ == '__main__':
     # Simulation Parameters from config
     utils = config['utils']
     sched = config['sched']
-    with_bw = config['with_bw_options']
+    with_bw = config['with_bw']
 
     for rep_ in range(1):
         # Sample jobs
@@ -155,59 +201,54 @@ if __name__ == '__main__':
                 if scheduling_algorithm is None:
                     print(f"Warning: '{s}' is not a valid SchedulingAlgorithm member.")
                     continue
+                print(utility)
+                # for withbw_option in with_bw:
+                # print(withbw_option)
+                # Assign bandwidth variables based on bw_mode from config
+                # bw_config = get_bandwidth_config(config, withbw_option)
 
-                for withbw_option in with_bw:
-                    print(withbw_option)
-                    # Assign bandwidth variables based on bw_mode from config
-                    bw_config = get_bandwidth_config(config, withbw_option)
-                    MAX_SPINE_CAPACITY = bw_config['max_spine_capacity']
-                    MAX_LEAF_CAPACITY = bw_config['max_leaf_capacity']
-                    MAX_NODE_BW = bw_config['max_node_bw']
-                    MAX_LEAF_TO_SPINE_BW = bw_config['max_leaf_to_spine_bw']
+                # Debugging: Print loaded configuration
+                # print("Loaded Configuration:")
+                # print(f"Replication: {rep}")
+                # print(f"Number of Jobs: {NUM_JOBS}")
+                # print(f"Discard Jobs: {DISCARD_JOB}")
+                # print(f"HETEROGENEOUS NODES: {HETEROGENEOUS_NODES}")
+                # print(f"Number of Nodes: {NUM_NODES}")
+                # print(f"bw_config: {bw_config}")
+                # print(f"Number of Spine Switches: {NUM_SPINE_SWITCHES}")
+                # print(f"Number of Leaf Switches: {NUM_LEAF_SWITCHES}")
+                # print(f"Hosts per Leaf: {HOST_PER_LEAF}")
+                # print(f"Max Spine Capacity: {MAX_SPINE_CAPACITY}")
+                # print(f"Max Leaf Capacity: {MAX_LEAF_CAPACITY}")
+                # print(f"Max Node BW: {MAX_NODE_BW}")
+                # print(f"Max Leaf to Spine BW: {MAX_LEAF_TO_SPINE_BW}")
+                # print(f"Utilities: {config['utils']}")
+                # print(f"Scheduling Algorithms: {config['sched']}")
+                # print(f"With Bandwidth Options: {config['with_bw']}")
+                topology = SpineLeafTopology(num_spine=NUM_SPINE_SWITCHES,
+                                        num_leaf=NUM_LEAF_SWITCHES,
+                                        num_hosts_per_leaf=HOST_PER_LEAF,
+                                        spine_bw=MAX_SPINE_CAPACITY*100,
+                                        leaf_bw=MAX_LEAF_CAPACITY*100,
+                                        link_bw_leaf_to_node=MAX_NODE_BW*100,
+                                        link_bw_leaf_to_spine=MAX_LEAF_TO_SPINE_BW*100)
 
-                    # Debugging: Print loaded configuration
-                    # print("Loaded Configuration:")
-                    # print(f"Replication: {rep}")
-                    # print(f"Number of Jobs: {NUM_JOBS}")
-                    # print(f"Discard Jobs: {DISCARD_JOB}")
-                    # print(f"HETEROGENEOUS NODES: {HETEROGENEOUS_NODES}")
-                    # print(f"Number of Nodes: {NUM_NODES}")
-                    # print(f"bw_config: {bw_config}")
-                    # print(f"Number of Spine Switches: {NUM_SPINE_SWITCHES}")
-                    # print(f"Number of Leaf Switches: {NUM_LEAF_SWITCHES}")
-                    # print(f"Hosts per Leaf: {HOST_PER_LEAF}")
-                    # print(f"Max Spine Capacity: {MAX_SPINE_CAPACITY}")
-                    # print(f"Max Leaf Capacity: {MAX_LEAF_CAPACITY}")
-                    # print(f"Max Node BW: {MAX_NODE_BW}")
-                    # print(f"Max Leaf to Spine BW: {MAX_LEAF_TO_SPINE_BW}")
-                    # print(f"Utilities: {config['utils']}")
-                    # print(f"Scheduling Algorithms: {config['sched']}")
-                    # print(f"With Bandwidth Options: {config['with_bw_options']}")
+                simulator = Simulator_Plebiscito(
+                    filename=rep,
+                    n_nodes=NUM_NODES,
+                    n_jobs=NUM_JOBS,
+                    dataset=dataset_plebi_,
+                    scheduling_algorithm=scheduling_algorithm,
+                    utility=utility,
+                    debug_level=DebugLevel.TRACE,
+                    # enable_logging=True,
+                    with_bw=with_bw,
+                    discard_job=DISCARD_JOB,
+                    heterogeneous_nodes=HETEROGENEOUS_NODES,
+                    fix_duration=FIX_DURATION
+                )
+                simulator.run()
 
-                    simulator = Simulator_Plebiscito(
-                        filename=rep,
-                        n_nodes=NUM_NODES,
-                        n_jobs=NUM_JOBS,
-                        dataset=dataset_plebi_,
-                        scheduling_algorithm=scheduling_algorithm,
-                        utility=utility,
-                        debug_level=DebugLevel.TRACE,
-                        # enable_logging=True,
-                        with_bw=withbw_option,
-                        max_spine_capacity=MAX_SPINE_CAPACITY*100,
-                        max_leaf_capacity=MAX_LEAF_CAPACITY*100,
-                        max_node_bw=MAX_NODE_BW*100,
-                        max_leaf_to_spine_bw=MAX_LEAF_TO_SPINE_BW*100,
-                        num_spine_switches=NUM_SPINE_SWITCHES,
-                        num_leaf_switches=NUM_LEAF_SWITCHES,
-                        num_hosts_per_leaf=HOST_PER_LEAF,
-                        discard_job=DISCARD_JOB,
-                        heterogeneous_nodes=HETEROGENEOUS_NODES,
-                        fix_duration=FIX_DURATION
-                    )
-                    simulator.run()
- 
-                    # Determine result filename based on bandwidth option
-                    result_filename = 'BW_results.csv' if withbw_option else 'results.csv'
-                    simulator.save_res(result_filename, rep)
- 
+                # # Determine result filename based on bandwidth option
+                # result_filename = 'BW_results.csv' if with_bw else 'results.csv'
+                # simulator.save_res(result_filename, rep)

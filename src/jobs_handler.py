@@ -177,7 +177,7 @@ def message_data(job, nmpds, read_count, failure=False, deallocate=False, split=
         "NN_data_size": job['bw'],
         "gpu_type": job['gpu_type'],
         "increase": increase,
-        "ps": job['ps'],
+        # "ps": job['ps'],
         "failure": failure,  
         "read_count":  read_count,
         "write_count": read_count,

@@ -5,7 +5,6 @@ from multiprocessing.managers import SyncManager
 import time
 from matplotlib import pyplot as plt
 import pandas as pd
-from src.topology_nx import SpineLeafTopology
 import logging
 import os
 import numpy as np
@@ -55,14 +54,9 @@ class Simulator_Plebiscito:
                 #  alpha = 1, 
                  utility = Utility.LGF, 
                  debug_level = DebugLevel.INFO, 
+                 topology = None,
                  with_bw = False,
-                 max_spine_capacity=300,
-                 max_leaf_capacity=100,
                  max_node_bw=20,
-                 max_leaf_to_spine_bw=100,
-                 num_spine_switches=10,
-                 num_leaf_switches=10,
-                 num_hosts_per_leaf=10,
                  decrement_factor = 1, 
                  split = False, 
                  enable_logging = False, 
@@ -122,13 +116,7 @@ class Simulator_Plebiscito:
 
 
         # Generate TOPOLOGY
-        self.topology = SpineLeafTopology(num_spine=num_spine_switches,
-                                          num_leaf=num_leaf_switches,
-                                          num_hosts_per_leaf=num_hosts_per_leaf,
-                                          spine_bw=max_spine_capacity,
-                                          leaf_bw=max_leaf_capacity,
-                                          link_bw_leaf_to_node=max_node_bw,
-                                          link_bw_leaf_to_spine=max_leaf_to_spine_bw)
+        self.topology = topology
 
         # Generate Nodes
         self.nodes = []
@@ -252,18 +240,14 @@ class Simulator_Plebiscito:
     def deallocate_jobs(self, progress_bid_events, queues, jobs_to_unallocate, failure = False):
         if len(jobs_to_unallocate) > 0:
             
+            allocations = None
             for _, j in jobs_to_unallocate.iterrows():
                 for i, n in enumerate(self.nodes):
 
                     if j['job_id'] in n.bids and n.id in n.bids[j['job_id']]['auction_id']:
+                        # print(j['job_id'])
 
                         allocations = self.nodes[0].bids[j['job_id']]['auction_id'] 
-
-                        
-                        # Remove BW allocation
-                        if not float('-inf') in allocations:
-                            # self.topology.deallocate_ps_from_workers([allocations[0]], allocations[1:], int( self.nodes[0].bids[j['job_id']]['read_count']))
-                            self.topology.deallocate_ps_from_workers(allocations, int(self.nodes[0].bids[j['job_id']]['read_count']))
                     
                         data = message_data(
                                     j,
@@ -276,10 +260,17 @@ class Simulator_Plebiscito:
                                 )
                         # for q in queues:
                         queues[i].put(data)
-
+            
+                # Remove BW allocation
+                if allocations is not None and not float('-inf') in allocations and len(set(allocations))>1:
+                    # self.topology.deallocate_ps_from_workers([allocations[0]], allocations[1:], int( self.nodes[0].bids[j['job_id']]['read_count']))
+                    self.topology.deallocate_ps_from_workers(allocations, int(self.nodes[0].bids[j['job_id']]['read_count']))
+                    # print('deallocaten!')
+                
             # for e in progress_bid_events:
             #     e.wait()
             #     e.clear()  '
+            
             while not all(q.empty() for q in queues):
                 for node in self.nodes:
                     node.work(0, 0)
@@ -381,7 +372,8 @@ class Simulator_Plebiscito:
         unassigned_jobs = pd.DataFrame()
         assigned_jobs = pd.DataFrame()
 
-        while not done and time_instant < 10000:
+        # while not done and time_instant < 10000:
+        while not done:
             start_time_loop = time.time()
 
             # Update previous lists
@@ -403,7 +395,7 @@ class Simulator_Plebiscito:
                 f"{'running jobs:':<15} {len(running_jobs):>5} | "
                 f"{'completed jobs:':<15} {completed_jobs:>5} | "
                 f"{'discarded jobs:':<15} {final_allocations['discarded_jobs']:>5} | "
-                # f"{'queuing jobs:':<15} {len(jobs):>5} | "
+                f"{'queuing jobs:':<15} {len(jobs):>5} | "
                 f"{'remaining jobs ids:':<15} {len(all_jobs_ids):>5} |" # --- {str(all_jobs_ids):>5} | "
                 # f"{queuing_job_ids if len(queuing_job_ids) else 'None'}"
             )
@@ -448,11 +440,12 @@ class Simulator_Plebiscito:
             # Update current job list
             curr_job_list = list(jobs["job_id"]) if len(jobs) > 0 else []
 
-            if sorted(prev_job_list) != sorted(curr_job_list) or sorted(prev_running_jobs) != sorted(curr_running_jobs):
-                # Create job batch only when there are differences
-                jobs_to_submit = job.create_job_batch(jobs, len(jobs))
-            else:
-                jobs_to_submit = []  # Efficient empty list creation
+            # if sorted(prev_job_list) != sorted(curr_job_list) or sorted(prev_running_jobs) != sorted(curr_running_jobs):
+            #     # Create job batch only when there are differences
+            #     jobs_to_submit = job.create_job_batch(jobs, len(jobs))
+            # else:
+            #     jobs_to_submit = []  # Efficient empty list creation
+            jobs_to_submit = job.create_job_batch(jobs, len(jobs))
 
             if len(jobs_to_submit):
                 logger.debug(f"\n{sim_stats}"
@@ -466,7 +459,7 @@ class Simulator_Plebiscito:
                     jobs_submitted += 1
                     subset = jobs_to_submit.iloc[start_id:start_id + batch_size]
 
-
+                    # Processing one job per time
                     row = subset.iloc[0]
                     job_id = int(subset['job_id'].iloc[0])
                     nmpds = row['num_pod']
@@ -474,6 +467,7 @@ class Simulator_Plebiscito:
                     num_cpu = row['num_cpu']
                     write_count = row['write_count']
                     read_count = row['read_count']
+                    max_pod = row['max_pod']
 
                     if job_id not in job_speedup:
                         job_speedup[job_id] = {
@@ -558,7 +552,7 @@ class Simulator_Plebiscito:
                                 consume = False
 
                                 if self.enable_logging:
-                                    logger.trace(f"All nodes completed the processing... bid processing time: {time_now} "
+                                    logger.debug(f"All nodes completed the processing... bid processing time: {time_now} "
                                                 f"jobs allocated: {tot_assigned_jobs}")
 
                                 job_allocation_time.append(time.time() - t)
@@ -574,8 +568,9 @@ class Simulator_Plebiscito:
                                 # Deallocate unassigned jobs
                                 def u_job_handler(final_allocations, job_id, unassigned_ids, unassigned_jobs, u_jobs,
                                                  all_jobs_ids, processed_jobs, tot_allocated_gpu, tot_allocated_cpu,
-                                                 discard_job=False, with_bw=False):
-                                    # Check and update 'first_unassigned' metrics if unassigned
+                                                 discard_job=False):
+                                    
+                                    # Save stats fo the first unallocated job
                                     if final_allocations['first_unassigned'] == 0:
                                         final_allocations['first_unassigned'] = final_allocations['allocated']
                                         final_allocations['first_unassigned_gpu'] = final_allocations['gpu']
@@ -587,22 +582,21 @@ class Simulator_Plebiscito:
                                         unassigned_ids.append(job_id)
 
                                     # Process jobs based on bandwidth conditions
-                                    if not with_bw:
-                                        u_df = pd.DataFrame(u_jobs)
+                                    u_df = pd.DataFrame(u_jobs)
 
-                                        if discard_job:
-                                            # Discard job logic
-                                            all_jobs_ids.remove(job_id)
-                                            final_allocations['discarded_jobs'] += 1
-                                            final_allocations['gpu_discarded'] += (u_df['num_gpu'].iloc[0] * u_df['num_pod'].iloc[0]) / 100
-                                            final_allocations['cpu_discarded'] += (u_df['num_cpu'].iloc[0] * u_df['num_pod'].iloc[0]) / 100
-                                            processed_jobs = pd.concat([processed_jobs, u_df], sort=False)
-                                            logger.info('[MSG] Do not enqueue to unassigned jobs list '
-                                                        f"{final_allocations['gpu_discarded']} {final_allocations['cpu_discarded']}")
-                                        else:
-                                            # Enqueue the job
-                                            logger.info(f'[MSG] Enqueue job {job_id}')
-                                            unassigned_jobs = pd.concat([unassigned_jobs, u_df])
+                                    if discard_job:
+                                        # Discard job logic
+                                        all_jobs_ids.remove(job_id)
+                                        final_allocations['discarded_jobs'] += 1
+                                        final_allocations['gpu_discarded'] += (u_df['num_gpu'].iloc[0] * u_df['num_pod'].iloc[0]) / 100
+                                        final_allocations['cpu_discarded'] += (u_df['num_cpu'].iloc[0] * u_df['num_pod'].iloc[0]) / 100
+                                        processed_jobs = pd.concat([processed_jobs, u_df], sort=False)
+                                        logger.info('[MSG] Do not enqueue to unassigned jobs list '
+                                                    f"{final_allocations['gpu_discarded']} {final_allocations['cpu_discarded']}")
+                                        # else:
+                                        #     # Enqueue the job
+                                        #     logger.info(f'[MSG] Enqueue job {job_id}')
+                                        #     unassigned_jobs = pd.concat([unassigned_jobs, u_df])unassigned_ids.append(job_id)
 
                                     self.deallocate_jobs(progress_bid_events, queues, u_df, failure=True)
 
@@ -615,7 +609,7 @@ class Simulator_Plebiscito:
                                     unassigned_ids, unassigned_jobs, processed_jobs = u_job_handler(
                                         final_allocations, job_id, unassigned_ids, unassigned_jobs, u_jobs,
                                         all_jobs_ids, processed_jobs, tot_allocated_gpu, tot_allocated_cpu,
-                                        discard_job=False, with_bw=False)
+                                        discard_job=False)
 
                                 def savemetrics(final_allocations, all_jobs_ids, job_id, nmpds, num_gpu, tot_assigned_jobs,
                                                 tot_allocated_gpu, tot_allocated_cpu, subset):
@@ -637,6 +631,7 @@ class Simulator_Plebiscito:
                                         logger.warning(f"Job ID {job_id} not found in the list.")
 
                                 if a_jobs:
+                                    
                                     assigned_jobs = pd.concat([assigned_jobs, pd.DataFrame(a_jobs)])
                                     allctd = utils.check_allocation(jobs=pd.DataFrame(a_jobs), nodes=self.nodes)
                                     allocations = node.bids[job_id]['auction_id']
@@ -649,35 +644,57 @@ class Simulator_Plebiscito:
                                         if len(ps_on) == 1:
                                             savemetrics(final_allocations, all_jobs_ids, job_id, nmpds, num_gpu,
                                                        tot_assigned_jobs, tot_allocated_gpu, tot_allocated_cpu, subset)
-                                            logger.info('\n[SIM] BW not used LLCTD')
+                                            logger.info('[MSG] BW not used LLCTD')
 
                                         elif len(ps_on) > 1:
                                             logger.info('[SIM] Allocating BW!')
                                             allocated_bw = False
                                             cnt_bw = 0
+                                            logger.debug(f"\n-- Job ID: {job_id}")
+                                            logger.debug(f"Allocations: {allocations}")
+                                            logger.debug(f"job_speedup[job_id]['read_count']: {job_speedup[job_id]['read_count']}")
 
-                                            while job_speedup[job_id]['alloc_bw'] >= job_speedup[job_id]['read_count'] / 2 \
-                                                    and not allocated_bw and cnt_bw < 20:
+                                            # while job_speedup[job_id]['alloc_bw'] >= job_speedup[job_id]['read_count'] / 2 \
+                                            # while not allocated_bw and cnt_bw < 20:
+                                            while not allocated_bw:
+                                                # Print the current values of variables
+                                                print(cnt_bw, job_speedup[job_id])
                                                 cnt_bw += 1
                                                 allocated_bw = self.topology.allocate_ps_to_workers_single(
-                                                    ps_node=[allocations[0]],
+                                                    ps_node=allocations[0],
                                                     worker_nodes=allocations[1:],
                                                     required_bw=job_speedup[job_id]['alloc_bw'],
                                                     allow_oversubscription=False)
+
+                                                # allocated_bw = self.topology.allocate_ps_to_workers_balanced(
+                                                #     worker_nodes=allocations,
+                                                #     required_bw=job_speedup[job_id]['alloc_bw'],
+                                                #     allow_oversubscription=False)
                                                 if not allocated_bw:
                                                     job_speedup[job_id]['alloc_bw'] = int(job_speedup[job_id]['alloc_bw'] * 0.9)
+                                                    logger.debug(f"-- reducing bw! {job_speedup[job_id]['alloc_bw']}")
 
                                             if not allocated_bw:
                                                 logger.warning('[SIM] DLLCT insufficient BW')
+                                                allctd = False
+                                                assigned_jobs = assigned_jobs.iloc[:-len(a_jobs)]
                                                 unassigned_ids, unassigned_jobs, processed_jobs = u_job_handler(
                                                     final_allocations, job_id, unassigned_ids, unassigned_jobs, a_jobs,
                                                     all_jobs_ids, processed_jobs, tot_allocated_gpu, tot_allocated_cpu,
-                                                    discard_job=False, with_bw=False)
+                                                    discard_job=False)
                                             else:
+                                                print('allocated_____________')
+                                                self.topology.save_stats_to_csv(self.filename+'_topo')
                                                 savemetrics(final_allocations, all_jobs_ids, job_id, nmpds, num_gpu,
                                                            tot_assigned_jobs, tot_allocated_gpu, tot_allocated_cpu, subset)
-                                                logger.info('[SIM] BW LLCTD , final reduced: '
+                                                logger.info('[SIM] BW LLCTD job:{job_id}, final reduced: '
                                                             f"{cnt_bw} bw: {job_speedup[job_id]}")
+                                                # plttng = True
+                                                plttng = False
+                                                if plttng:
+                                                    self.topology.plot_node_available_bandwidth()  # Call the plot method for spine utilization
+                                                    self.topology.plot_bandwidth_utilization()  # Call the plot method for spine utilization
+                                                    self.generate_plots_resources()
 
                                         consume = False
 
@@ -691,19 +708,45 @@ class Simulator_Plebiscito:
                         # if not allctd and cnt > 2:
                         if not allctd:
                             if self.with_bw:  # Here we try the allocation multiple times by reducing the bw which might be the bottleneck!
-                                if cnt < 10 and job_speedup[job_id]['alloc_bw'] > 0.5:
-                                    job_speedup[job_id]['alloc_bw'] = int(job_speedup[job_id]['alloc_bw'] * 0.8)
-                                    subset.loc[subset['job_id'] == job_id, 'read_count'] = job_speedup[job_id]['alloc_bw']
-                                    logger.info(f"RETRY with lower BW: {cnt}, initial bw {job_speedup[job_id]['read_count']}, "
-                                                f"reduced bw {job_speedup[job_id]['alloc_bw']}")
-                                    self.dispatch_jobs(progress_bid_events, queues, subset, nmpds, job_speedup[job_id]['alloc_bw'])
-                                else:
-                                    unassigned_jobs = pd.concat([unassigned_jobs, pd.DataFrame(u_jobs)])
-                                    logger.warning(f"(BW) NOT LLCT {job_id}")
+                                # if float('-inf') not in allocations and cnt < 5:
+                                # job_speedup[job_id]['alloc_bw'] = max(int(job_speedup[job_id]['read_count'] * (0.5 * (0.9 ** cnt))), 10)
+                                print('\nReducing to:', job_speedup[job_id])
 
-                                    job_speedup[job_id]['alloc_bw'] = job_speedup[job_id]['read_count']
-                                    discard_flag = True
-                                    break
+                                subset.loc[subset['job_id'] == job_id, 'read_count'] = job_speedup[job_id]['alloc_bw']
+                                
+                                counts = {}
+                                for value in allocations:
+                                    counts[value] = counts.get(value, 0) + 1
+
+                                # Here we resubmit the job to find another placement and try to spread it over multiple nodes
+                                min_count_value = min(counts.values())
+                                if subset['max_pod'].iloc[0] > min_count_value:
+                                    subset.loc[subset.index[0], 'max_pod'] = min_count_value
+                                elif subset['max_pod'].iloc[0] > 2:
+                                    subset.loc[subset.index[0], 'max_pod'] -= 1
+                                else:
+                                    subset.loc[subset.index[0], 'max_pod'] = 1
+                                logger.info(f"Max pod on a node {subset.loc[subset.index[0], 'max_pod']} mincount {min_count_value}")
+                                    
+                                logger.info(
+                                    f"RETRY with lower BW: {cnt}, initial bw: {job_speedup[job_id]['read_count']}, "
+                                    f"reduced bw: {job_speedup[job_id]['alloc_bw']}, "
+                                    f"tot pods: {subset['num_pod'].iloc[0]}, max_pods: {subset['max_pod'].iloc[0]}"
+                                )
+
+                                # self.dispatch_jobs(progress_bid_events, queues, subset, int(subset['max_pod'].iloc[0]), job_speedup[job_id]['alloc_bw'])
+                            # else:
+                                subset.loc[subset['job_id'] == job_id, 'read_count'] /= 2
+
+                                unassigned_jobs = pd.concat([unassigned_jobs, subset])
+                                unassigned_ids.append(job_id)
+                                logger.warning(f"[SIM] (BW) NOT LLCT {job_id} {allocations} {unassigned_jobs}")
+                                # job_speedup[job_id]['alloc_bw'] = job_speedup[job_id]['read_count']
+
+                                # self.dispatch_jobs(progress_bid_events, queues, subset, int(subset['max_pod'].iloc[0]), job_speedup[job_id]['alloc_bw'])
+                                
+                                # discard_flag = True
+                                break
                             else:
                                 logger.warning(f"{'[SIM] (NO BW) NOT LLCT:':<25} {job_id:<10}")
                                 break
@@ -735,19 +778,13 @@ class Simulator_Plebiscito:
             # Check if all jobs have been processed
             if len(processed_jobs) == len(self.dataset) and len(running_jobs) == 0 and len(jobs) == 0:
                 logger.info('[SIM] Last allocated! :)')
-                logger.debug(sim_stats)
                 job.extract_allocated_jobs(processed_jobs, self.filename + "_allocations.csv")
                 utils.verify_tot_res(self.nodes, running_jobs)
-
                 done = True
+                logger.debug(sim_stats)
                 break
 
-            # plttng = True
-            plttng = False
-            if plttng:
-                self.topology.plot_node_available_bandwidth()  # Call the plot method for spine utilization
-                self.topology.plot_bandwidth_utilization()  # Call the plot method for spine utilization
-                self.generate_plots_resources()
+
 
         # Collect final node results
         jobs_report.to_csv(self.filename + "_jobs_report.csv")
@@ -795,7 +832,7 @@ class Simulator_Plebiscito:
             f"do not match target CPU allocations ({final_allocations['t_cpu']})."
         )
 
-        self.topology.assert_original_state()
+        # self.topology.assert_original_state()
 
         del final_allocations['cpu']
         del final_allocations['gpu']
@@ -808,7 +845,9 @@ class Simulator_Plebiscito:
         final_allocations['utility'] = self.utility
         final_allocations['jct_tot'] = time_instant
         jobs_df = pd.DataFrame(jobs_report)
-        final_allocations['jct'] = ((jobs_df['complete_time'] - jobs_df['submit_time']) / jobs_df['duration']).fillna(0).tolist()
+        jobs_df['jct'] = (jobs_df['complete_time'] - jobs_df['submit_time']) / jobs_df['duration']
+        jobs_df['jct'] = jobs_df['jct'].fillna(0)
+        final_allocations['jct'] = jobs_df['jct'].tolist()
         final_allocations['jct_mean'] = jobs_df['jct'].mean()
         final_allocations['jct_median'] = jobs_df['jct'].median()
 

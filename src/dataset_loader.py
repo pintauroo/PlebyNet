@@ -208,8 +208,6 @@ def init_go_(num_jobs, filename, seed, fix_duration):
     np.random.seed(int(seed))
     current_directory = os.getcwd()
     csv_file=current_directory+'/traces/'+filename
-    # csv_file = '/home/andrea/PlebyNet/traces/pai/df_dataset.csv'
-    # csv_file='/home/andrea/PlebyNet/traces/cleaned_dfws.csv'
     jobs = pd.read_csv(csv_file)
     
     jobs.rename(columns={'runtime': 'duration'}, inplace=True)
@@ -245,7 +243,7 @@ def init_go_(num_jobs, filename, seed, fix_duration):
     # Define the maximum allowed duration
     max_allowed_duration = 1000
 
-    time_ = 1
+    time_ = 10
     id_ = 10
     for job_dict in job_list:
         # print(job_dict)
@@ -273,26 +271,19 @@ def init_go_(num_jobs, filename, seed, fix_duration):
         job_dict["current_duration"] = 0.0 # this value keeps track of the job's current duration with respect to the speedup. Not useful to plot, it is used for internal purposes
         job_dict["speedup"] = 1
         job_dict["mnallc"] = job_dict['num_pod']
-        # job_dict['num_pod'] = job_dict['num_pod'] if job_dict['num_pod'] * job_dict["read_count"] <= 100 else: 3
-        # job_dict['num_pod'] = max(4,min(10, job_dict['num_pod'] ))
-        # job_dict['num_pod'] = min(4, job_dict['num_pod'] )
-        # job_dict['num_pod'] = job_dict['num_pod'] if job_dict['num_pod']%2==0 else job_dict['num_pod']+1 
-        # job_dict['num_pod'] = 4
-        # job_dict['num_gpu'] = int(800)
-        # job_dict['num_cpu'] = int(9600)
-        # job_dict['num_gpu'] = int(800/2)
-        # job_dict['num_cpu'] = int(9600/2)
-        # if job_dict['num_gpu']<100:
-        #     job_dict['num_gpu'] = job_dict['num_gpu']*20 
-        #     job_dict['num_cpu'] = job_dict['num_cpu']*10 
+        # job_dict['num_pod'] = 10
 
-        job_dict["ps"] = job_dict['num_pod'] // 5
+
+        job_dict["max_pod"] = job_dict['num_pod']
         # job_dict["write_count"] = job_dict["read_count"] = int(random.randint(10, int(100/job_dict['num_pod'])))
         # job_dict["write_count"] = job_dict["read_count"] = max(job_dict["write_count"],job_dict["read_count"])
         job_dict["read_count"] =  int(job_dict["read_count"] * 100)
         job_dict["write_count"] = int(job_dict["write_count"] * 100)
-        
-        # job_dict['read_count'] = job_dict['num_gpu'] * job_dict['num_cpu']  * job_dict['num_pod'] / 10000
+        # job_dict["read_count"] =  int(2000)
+        # job_dict["write_count"] = int(2000)
+        # job_dict['num_gpu'] = int(800)
+        # job_dict['num_cpu'] = int(9600)
+        # # job_dict['read_count'] = job_dict['num_gpu'] * job_dict['num_cpu']  * job_dict['num_pod'] / 10000
         # decrease = random.uniform(1, 4)
         # job_dict['num_gpu'] = int(float(job_dict['num_gpu'])/job_dict['num_pod'])
         # job_dict['num_cpu'] = int(float(job_dict['num_cpu'])/job_dict['num_pod'])
