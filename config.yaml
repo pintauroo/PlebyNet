@@ -23,10 +23,10 @@ LeafSpine:
   num_spine_switches: 2
   num_leaf_switches: 5
   host_per_leaf: 10
-  max_spine_capacity: 1000
-  max_leaf_capacity: 1000
+  max_spine_capacity: 500
+  max_leaf_capacity: 500
   max_node_bw: 100
-  max_leaf_to_spine_bw: 1000
+  max_leaf_to_spine_bw: 100
 
   # Infinite Bandwidth Option
   infinite_bw:

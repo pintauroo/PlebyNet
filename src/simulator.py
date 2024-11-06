@@ -656,7 +656,7 @@ class Simulator_Plebiscito:
 
                                             # while job_speedup[job_id]['alloc_bw'] >= job_speedup[job_id]['read_count'] / 2 \
                                             # while not allocated_bw and cnt_bw < 20:
-                                            while not allocated_bw:
+                                            while not allocated_bw and job_speedup[job_id]['alloc_bw'] > 100:
                                                 # Print the current values of variables
                                                 print(cnt_bw, job_speedup[job_id])
                                                 cnt_bw += 1
