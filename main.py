@@ -241,6 +241,7 @@ if __name__ == '__main__':
                     scheduling_algorithm=scheduling_algorithm,
                     utility=utility,
                     debug_level=DebugLevel.TRACE,
+                    topology=topology,
                     # enable_logging=True,
                     with_bw=with_bw,
                     discard_job=DISCARD_JOB,
