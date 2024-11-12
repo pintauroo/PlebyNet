@@ -24,8 +24,6 @@ class FatTreeTopology(BaseTopology):
         agg_switches = [f"agg_{i}" for i in range(num_agg_switches)]
         for i, agg in enumerate(agg_switches):
             self.G.add_node(agg, type="aggregation")
-
-            
             for j in range(self.num_pods // 2):
                 core_switch = core_switches[(i % (num_core_switches // (self.num_pods // 2))) + j]
                 self.G.add_edge(agg, core_switch, bandwidth=self.bandwidth)
@@ -50,22 +48,25 @@ class FatTreeTopology(BaseTopology):
         Allocate processing resources (ps) to workers in a balanced way.
         This method should consider the FatTree topology and the bandwidth constraints.
         """
-        
         core_switches = [node for node, data in self.G.nodes(data=True) if data['type'] == 'core']
         agg_switches = [node for node, data in self.G.nodes(data=True) if data['type'] == 'aggregation']
         edge_switches = [node for node, data in self.G.nodes(data=True) if data['type'] == 'edge']
         hosts = [node for node, data in self.G.nodes(data=True) if data['type'] == 'host']
 
-        
-        total_bandwidth = sum([self.G[host][edge].get('bandwidth', self.bandwidth) for host in hosts for edge in edge_switches])
+        total_bandwidth = 0
+        for host in hosts:
+            connected_edges = self.G.neighbors(host)
+            for edge in connected_edges:
+                total_bandwidth += self.G[host][edge].get('bandwidth', self.bandwidth)
+
         avg_bandwidth = total_bandwidth / len(hosts)
 
         allocation = {}
         for host in hosts:
-            
             allocated_switch = self._find_best_edge_switch(host, avg_bandwidth)
             allocation[host] = allocated_switch
             self.G.nodes[allocated_switch]['allocated'] = self.G.nodes.get(allocated_switch, {}).get('allocated', 0) + avg_bandwidth
+
         return allocation
 
     def _find_best_edge_switch(self, host, avg_bandwidth):
@@ -86,7 +87,6 @@ class FatTreeTopology(BaseTopology):
         Allocate processing resources (ps) to workers in a single allocation.
         This method should allocate resources to the workers in a way that respects the FatTree topology.
         """
-        
         allocation = {}
         for host in self.G.nodes(data=True):
             if host[1]['type'] == 'host':
@@ -102,7 +102,6 @@ if __name__ == "__main__":
     print("\nEdges in the Fat-Tree Topology:")
     print(fat_tree.G.edges(data=True))
 
-    
     balanced_allocation = fat_tree.allocate_ps_to_workers_balanced()
     print("\nBalanced Allocation:")
     print(balanced_allocation)
