@@ -9,7 +9,9 @@ from src.simulator import Simulator_Plebiscito
 from src.config import ApplicationGraphType, DebugLevel, SchedulingAlgorithm, Utility
 from src.dataset_builder import generate_dataset
 from src.dataset_loader import init_go_, poisson_arrivals
-from src.topology_nx import SpineLeafTopology
+from src.topology_nx import SpineLeafTopology, FatTreeTopology
+# from src.topology_nx import SpineLeafTopology
+
 
 def load_config(config_path: str) -> dict:
     """
@@ -160,10 +162,29 @@ if __name__ == '__main__':
         # Example Usage
         adj_matrix = topology.calculate_host_to_host_adjacency_matrix()
         print("Adjacency Matrix:", adj_matrix)
+
+    if topology_type == 'FatTree':
+        topology_config = config['FatTree']
         
+        # Extract parameters
+        num_core_switches = topology_config['num_core_switches']
+        num_aggregation_switches = topology_config['num_aggregation_switches']
+        num_edge_switches = topology_config['num_edge_switches']
+        hosts_per_edge_switch = topology_config['hosts_per_edge_switch']
+        core_to_agg_bw = topology_config['core_to_agg_bw']
+        agg_to_edge_bw = topology_config['agg_to_edge_bw']
+        edge_to_host_bw = topology_config['edge_to_host_bw']
 
-
-
+        # Initialize FatTreeTopology
+        topology = FatTreeTopology(
+            num_core_switches,
+            num_aggregation_switches,
+            num_edge_switches,
+            hosts_per_edge_switch,
+            core_to_agg_bw,
+            agg_to_edge_bw,
+            edge_to_host_bw
+        )
     # Assign topology variables from config
     HETEROGENEOUS_NODES = config['heterogeneous_nodes']
     FIX_DURATION = config['fix_duration']

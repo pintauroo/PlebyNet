@@ -361,6 +361,51 @@ class SpineLeafTopology(BaseTopology):
                 host_id += 1
 
         return G
+    
+class FatTreeTopology(BaseTopology):
+    def __init__(self, num_core, num_aggregation, num_edge, hosts_per_edge, core_bw, agg_bw, edge_bw):
+        super().__init__()
+        self.G = self.create_topology(num_core, num_aggregation, num_edge, hosts_per_edge, core_bw, agg_bw, edge_bw)
+
+    def create_topology(self, num_core, num_aggregation, num_edge, hosts_per_edge, core_bw, agg_bw, edge_bw):
+        G = nx.Graph()
+
+        # Create core switches
+        core_switches = [f"Core{i}" for i in range(num_core)]
+        for core in core_switches:
+            G.add_node(core, type='core', bandwidth=core_bw, reserved_bw=0)
+
+        # Create aggregation switches
+        agg_switches = [f"Agg{i}" for i in range(num_aggregation)]
+        for agg in agg_switches:
+            G.add_node(agg, type='aggregation', bandwidth=agg_bw, reserved_bw=0)
+
+        # Create edge switches
+        edge_switches = [f"Edge{i}" for i in range(num_edge)]
+        for edge in edge_switches:
+            G.add_node(edge, type='edge', bandwidth=edge_bw, reserved_bw=0)
+
+        # Connect core to aggregation switches
+        for core in core_switches:
+            for agg in agg_switches:
+                G.add_edge(core, agg, bandwidth=core_bw, reserved_bw=0)
+
+        # Connect aggregation to edge switches
+        for agg in agg_switches:
+            for edge in edge_switches:
+                G.add_edge(agg, edge, bandwidth=agg_bw, reserved_bw=0)
+
+        # Connect edge switches to hosts
+        host_id = 0
+        for edge in edge_switches:
+            for _ in range(hosts_per_edge):
+                host = f"Host{host_id}"
+                G.add_node(host, type='host', bandwidth=edge_bw, reserved_bw=0)
+                G.add_edge(edge, host, bandwidth=edge_bw, reserved_bw=0)
+                host_id += 1
+
+        return G
+
 
 # Example usage
 if __name__ == "__main__":

@@ -57,3 +57,14 @@ heterogeneous_nodes: true
 
 fix_duration: true
 # fix_duration: false
+
+topology_type: "FatTree"
+
+FatTree:
+  num_core_switches: 2
+  num_aggregation_switches: 4
+  num_edge_switches: 8
+  hosts_per_edge_switch: 10
+  core_to_agg_bw: 200
+  agg_to_edge_bw: 100
+  edge_to_host_bw: 50
