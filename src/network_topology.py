@@ -7,6 +7,8 @@ import sys
 import sys
 from collections import deque
 from enum import Enum
+from base_topology import BaseTopology
+import networkx as nx
 
 # class syntax
 network_aware = True
@@ -540,3 +542,49 @@ class NetworkTopology:
                 G.add_edge("Client", "Sw " + str(self.__n_nodes+self.__group_number),
                            label=self.__edge_id[self.__n_nodes+self.__group_number][self.__n_nodes+self.__group_number+2])
             G.write("file.dot")
+
+class FatTreeTopology(BaseTopology):
+    def __init__(self, num_core_switches, num_agg_switches, num_edge_switches, num_hosts):
+        super().__init__()
+        self.num_core_switches = num_core_switches
+        self.num_agg_switches = num_agg_switches
+        self.num_edge_switches = num_edge_switches
+        self.num_hosts = num_hosts
+
+    def create_topology(self):
+        # Create the graph
+        self.graph = nx.Graph()
+
+        # Add core switches
+        core_switches = [f"core_{i}" for i in range(self.num_core_switches)]
+        self.graph.add_nodes_from(core_switches)
+
+        # Add aggregation switches
+        agg_switches = [f"agg_{i}" for i in range(self.num_agg_switches)]
+        self.graph.add_nodes_from(agg_switches)
+
+        # Add edge switches
+        edge_switches = [f"edge_{i}" for i in range(self.num_edge_switches)]
+        self.graph.add_nodes_from(edge_switches)
+
+        # Add hosts
+        hosts = [f"host_{i}" for i in range(self.num_hosts)]
+        self.graph.add_nodes_from(hosts)
+
+        # Create connections (this is simplified and assumes a balanced Fat-Tree)
+        # Core switches connect to aggregation switches
+        for core in core_switches:
+            for agg in agg_switches:
+                self.graph.add_edge(core, agg, bandwidth=10)
+
+        # Aggregation switches connect to edge switches
+        for agg in agg_switches:
+            for edge in edge_switches:
+                self.graph.add_edge(agg, edge, bandwidth=10)
+
+        # Edge switches connect to hosts
+        for edge in edge_switches:
+            for host in hosts:
+                self.graph.add_edge(edge, host, bandwidth=1)
+
+        return self.graph
