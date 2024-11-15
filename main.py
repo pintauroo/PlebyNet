@@ -10,6 +10,7 @@ from src.config import ApplicationGraphType, DebugLevel, SchedulingAlgorithm, Ut
 from src.dataset_builder import generate_dataset
 from src.dataset_loader import init_go_, poisson_arrivals
 from src.topology_nx import SpineLeafTopology
+from src.network_topology import FatTreeTopology
 
 def load_config(config_path: str) -> dict:
     """
@@ -95,6 +96,22 @@ if __name__ == '__main__':
         'heterogeneous_nodes',
         'fix_duration'
     ]
+
+    # Assuming 'fat_tree' is a section of the YAML config
+    fat_tree_config = config.get('fat_tree')
+
+    # Ensure that fat_tree_config exists in the loaded config
+    if not fat_tree_config:
+        raise KeyError("Missing 'fat_tree' configuration parameters in the YAML file.")
+
+    # Proceed to initialize FatTreeTopology with the loaded config
+    fat_tree = FatTreeTopology(
+        num_core_switches=fat_tree_config['num_core_switches'],
+        num_agg_switches=fat_tree_config['num_agg_switches'],
+        num_edge_switches=fat_tree_config['num_edge_switches'],
+        num_hosts=fat_tree_config['num_hosts']
+    )
+    fat_tree.create_topology()
 
     # Validate configuration
     # try:

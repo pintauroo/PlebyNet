@@ -11,7 +11,6 @@ n_failure: 0
 csv_file_path: "traces/pai/"
 csv_file: "cleaned_dfws.csv"
 
-
 # with_bw: false
 with_bw: true
 
@@ -35,6 +34,19 @@ LeafSpine:
     max_node_bw: 99999999999
     max_leaf_to_spine_bw: 99999999999
 
+# fat_tree_topology
+fat_tree_topology:
+  num_core_switches: 4
+  num_agg_switches: 8
+  num_edge_switches: 8
+  num_hosts: 16
+
+  infinite_bw:
+    max_core_capacity: 99999999999    
+    max_agg_capacity: 99999999999    
+    max_edge_capacity: 99999999999    
+    max_host_bw: 99999999999 
+
 # Simulation Parameters
 utils:
   - "TETRIS"
@@ -57,3 +69,5 @@ heterogeneous_nodes: true
 
 fix_duration: true
 # fix_duration: false
+
+
