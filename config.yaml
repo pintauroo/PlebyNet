@@ -8,8 +8,9 @@
 num_jobs: 50
 num_nodes: 50
 n_failure: 0
-csv_file_path: "traces/pai/"
+csv_file_path: "traces/"
 csv_file: "cleaned_dfws.csv"
+# csv_file: "50J_50N_NFD_HN_NDJ_BW_24_TETRIS_FIFO_dataset.csv"
 
 
 # with_bw: false
@@ -55,5 +56,5 @@ discard_job: false
 heterogeneous_nodes: true
 # heterogeneous_nodes: false
 
-fix_duration: true
-# fix_duration: false
+# fix_duration: true
+fix_duration: false

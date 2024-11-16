@@ -90,23 +90,20 @@ def allocation_to_gpu_type(allocation, gpu_types):
         return ret
     
 
-def verify_tot_res(nodes, allocated_jobs, per_node_cpu=9600, per_node_gpu=800):
+def verify_tot_res(filename, nodes, allocated_jobs, total_capacity_cpu, total_capacity_gpu):
     """
     Optimized version of verify_tot_res to enhance performance.
 
     Parameters:
-    - nodes (list): A list of node objects. Each node should have `avail_cpu` and `avail_gpu` attributes.
+    - filename (str): Name of the file or context for error reporting.
+    - nodes (list): A list of node objects. Each node should have `initial_cpu`, `updated_cpu`, `initial_gpu`, and `updated_gpu` attributes.
     - allocated_jobs (pd.DataFrame): A pandas DataFrame containing job allocations with 'num_cpu', 'num_gpu', and 'num_pod' columns.
-    - per_node_cpu (int, optional): Total CPU capacity per node. Defaults to 9600.
-    - per_node_gpu (int, optional): Total GPU capacity per node. Defaults to 800.
+    - total_capacity_cpu (int): Total CPU capacity across all nodes.
+    - total_capacity_gpu (int): Total GPU capacity across all nodes.
 
     Raises:
     - ValueError: If the allocated resources exceed the available resources.
     """
-
-    num_nodes = len(nodes)
-    total_capacity_cpu = per_node_cpu * num_nodes
-    total_capacity_gpu = per_node_gpu * num_nodes
 
     # Calculate total allocated resources using NumPy for vectorization
     if not allocated_jobs.empty:
@@ -120,47 +117,37 @@ def verify_tot_res(nodes, allocated_jobs, per_node_cpu=9600, per_node_gpu=800):
         tot_allocated_cpu = 0
         tot_allocated_gpu = 0
 
-    # Extract available resources using list comprehensions (faster than generator expressions)
-    # Assuming nodes have 'avail_cpu' and 'avail_gpu' as attributes
-    # for node in nodes:
-    #     print(node.initial_cpu-node.updated_cpu)
+    # Extract available resources
+    used_cpu = [node.initial_cpu - node.updated_cpu for node in nodes]
+    used_gpu = [node.initial_gpu - node.updated_gpu for node in nodes]
 
-    # avail_cpu = [node.initial_cpu-node.updated_cpu for node in nodes]
-    # avail_gpu = [node.initial_gpu-node.updated_gpu for node in nodes]
+    tot_used_cpu = np.sum(used_cpu)
+    tot_used_gpu = np.sum(used_gpu)
 
-    avail_cpu = [node.initial_cpu-node.updated_cpu for node in nodes]
-    avail_gpu = [node.initial_gpu-node.updated_gpu for node in nodes]
+    # # Calculate expected available resources
+    # expected_available_cpu = total_capacity_cpu - tot_allocated_cpu
+    # expected_available_gpu = total_capacity_gpu - tot_allocated_gpu
 
-    tot_available_cpu = np.sum(avail_cpu)
-    tot_available_gpu = np.sum(avail_gpu)
-
-    # Calculate expected available resources
-    expected_available_cpu = total_capacity_cpu - tot_allocated_cpu
-    expected_available_gpu = total_capacity_gpu - tot_allocated_gpu
-
-    # Early exit if CPU mismatch is detected
-    # if expected_available_cpu != tot_available_cpu:
-    # print(tot_available_cpu,  tot_allocated_cpu)
-    if tot_available_cpu != tot_allocated_cpu:
+    # Verify CPU resources
+    if tot_used_cpu != tot_allocated_cpu:
         raise ValueError(
-            f"CPU allocation mismatch:\n"
+            f"{filename} \nCPU allocation mismatch:\n"
             f"Total Capacity CPU: {total_capacity_cpu}\n"
             f"Total Allocated CPU: {tot_allocated_cpu}\n"
-            f"Expected Available CPU: {expected_available_cpu}\n"
-            f"Actual Available CPU: {tot_available_cpu}"
+            # f"Expected Available CPU: {expected_available_cpu}\n"
+            # f"Actual Available CPU: {tot_available_cpu}"
         )
 
-    # Early exit if GPU mismatch is detected
-    # if expected_available_gpu != tot_available_gpu:
-    if tot_available_gpu != tot_allocated_gpu:
-
+    # Verify GPU resources
+    if tot_used_gpu != tot_allocated_gpu:
         raise ValueError(
-            f"GPU allocation mismatch:\n"
+            f"{filename} \nGPU allocation mismatch:\n"
             f"Total Capacity GPU: {total_capacity_gpu}\n"
             f"Total Allocated GPU: {tot_allocated_gpu}\n"
-            f"Expected Available GPU: {expected_available_gpu}\n"
-            f"Actual Available GPU: {tot_available_gpu}"
+            # f"Expected Available GPU: {expected_available_gpu}\n"
+            # f"Actual Available GPU: {tot_available_gpu}"
         )
+
 
     
 def verify_resources_consumption(nodes, subset, nodes_snapshot, llctd):

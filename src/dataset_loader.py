@@ -263,6 +263,8 @@ def init_go_(num_jobs, filename, seed, fix_duration):
             else:
                 job_dict['duration'] = scaled_duration
 
+        # job_dict['duration'] = 10
+        
         job_dict["final_node_allocation"] = []
         job_dict["final_gpu_allocation"] = []
         # job_dict["deadline"] = job_dict['submit_time'] + job_dict['duration'] * (1 + 0.1 * random.random()) # 10% deadline slack

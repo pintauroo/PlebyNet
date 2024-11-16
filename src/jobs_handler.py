@@ -22,6 +22,17 @@ def extract_completed_jobs(dataset: pd.DataFrame, time_instant):
     
     return ret, dataset
 
+def stop_job(dataset: pd.DataFrame, time_instant, job_id):
+    if len(dataset) == 0:
+        return dataset, dataset
+    
+    ret = dataset[dataset['job_id'] == job_id].copy()
+    ret["complete_time"] = time_instant
+    
+    if len(ret) > 0:
+        dataset = dataset[~(dataset['job_id'] == job_id)]
+    
+    return ret, dataset
  
 def extract_allocated_jobs(dataset: pd.DataFrame, filename):
 
@@ -58,8 +69,8 @@ def extract_rebid_job(dataset: pd.DataFrame, low_thre, high_thre, duration_there
 def select_jobs(dataset, time_instant):
     return dataset[dataset['submit_time'] == time_instant]
 
-def create_job_batch(dataset, batch_size):
-    ret = dataset.head(batch_size)
+def create_job_batch(dataset, batch_size, time_instant):
+    ret = dataset[dataset['submit_time'] <= time_instant]
     dataset.drop(index=dataset.index[:batch_size], axis=0, inplace=True)
     return ret
 
@@ -104,10 +115,11 @@ def dispatch_job(dataset: pd.DataFrame, nmpds: int, read_count, queues, use_net_
             speedup = job['speedup']
             if speedup > high_th:
                 increase = False
-
+        
         data = message_data(
                     job,
-                    nmpds,
+                    # int(dataset['max_pod']),
+                    int(nmpds),
                     read_count,
                     deallocate=False,
                     split=split,
