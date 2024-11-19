@@ -5,7 +5,7 @@
 # output filename
 
 # General Settings
-num_jobs: 50
+num_jobs: 70
 num_nodes: 50
 n_failure: 0
 csv_file_path: "traces/"

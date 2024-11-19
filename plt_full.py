@@ -332,9 +332,9 @@ def plot_cdf_by_utility(csv_file, label, t_gpu_min=None, t_gpu_max=None, output_
 if __name__ == "__main__":
     # List of CSV file paths without the '.csv' extension
     csv_files = [
-        '50J_50N_NFD_HN_NDJ_SPS_NBW_test_results',
-        '50J_50N_NFD_HN_NDJ_SPS_BW_test_results',
-        '50J_50N_NFD_HN_NDJ_MPS_BW_test_results'
+        '70J_50N_NFD_HN_NDJ_SPS_NBW_test_results',
+        '70J_50N_NFD_HN_NDJ_SPS_BW_test_results',
+        '70J_50N_NFD_HN_NDJ_MPS_BW_test_results'
     ]
 
     # Define labels for each CSV file for identification in plots

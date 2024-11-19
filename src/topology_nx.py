@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import logging
+
+# Suppress matplotlib logging
 logging.getLogger('matplotlib').setLevel(logging.ERROR)
 
 class BaseTopology:
@@ -76,9 +78,10 @@ class BaseTopology:
 
         return adj_matrix
 
-    def record_utilization(self):
-        record = {'allocation_step': self.allocation_step}
-        
+    def record_utilization(self, time_instant, job_id):
+        record = {'allocation_step': time_instant,
+                  'job_id': job_id}
+
         for node, data in self.G.nodes(data=True):
             if data['type'] in ['spine', 'leaf', 'host']:
                 prefix = 'node'
@@ -93,7 +96,7 @@ class BaseTopology:
             record[f"{prefix}_{element}_total_bw"] = data['bandwidth']
             record[f"{prefix}_{element}_reserved_bw"] = data['reserved_bw']
             record[f"{prefix}_{element}_available_bw"] = data['bandwidth'] - data['reserved_bw']
-        
+
         self.utilization_records.append(record)
         self.allocation_step += 1
 
@@ -237,16 +240,20 @@ class BaseTopology:
         plt.close()
 
         return utilization
-    
-    def allocate_ps_to_workers_balanced(self, worker_nodes, required_bw, job_id, allow_oversubscription=False):
-        # Format node IDs
+
+    def allocate_ps_to_workers_balanced(self, worker_nodes, required_bw, job_id, time_instant, allow_oversubscription=False):
+        # Format worker node IDs
         worker_nodes_formatted = self.format_node_ids(worker_nodes)
         if not worker_nodes_formatted:
             # print("No worker nodes provided for allocation.")
             return 0
 
-        # In this context, PS nodes are the unique set of worker nodes
-        ps_nodes_formatted = list(set(worker_nodes_formatted))
+        # Identify Spine Nodes (PS Nodes)
+        ps_nodes_formatted = [node for node, data in self.G.nodes(data=True) if data['type'] == 'spine']
+        if not ps_nodes_formatted:
+            # print("No spine nodes available for allocation.")
+            return 0
+
         paths = {}
         edge_usage_count = {}
         node_usage_count = {}
@@ -255,6 +262,8 @@ class BaseTopology:
         # Collect all paths and usage counts
         for worker in worker_nodes_formatted:
             for ps in ps_nodes_formatted:
+                if ps == worker:
+                    continue 
                 try:
                     path = nx.shortest_path(self.G, source=ps, target=worker)
                     key = (ps, worker)
@@ -335,7 +344,7 @@ class BaseTopology:
             for (ps, worker), path_info in paths.items():
                 self.allocated_paths[job_id][(ps, worker)] = (path_info['path'], max_bw_per_connection, path_info['count'])
 
-            self.record_utilization()
+            self.record_utilization(time_instant, job_id)
             return max_bw_per_connection
 
         except Exception as e:
@@ -349,7 +358,7 @@ class BaseTopology:
                     self.G[u][v][attr] = old_value
             return 0
 
-    def deallocate_ps_to_workers_balanced(self, job_id):
+    def deallocate_ps_to_workers_balanced(self, job_id, time_instant):
         """
         Deallocate resources for a job allocated using allocate_ps_to_workers_balanced.
         """
@@ -379,7 +388,7 @@ class BaseTopology:
 
             # After successful deallocation, remove the job_id from allocated_paths
             del self.allocated_paths[job_id]
-            self.record_utilization()
+            self.record_utilization(time_instant, job_id)
             return True
         except Exception as e:
             # print(f"Exception occurred during deallocation: {e}")
@@ -397,20 +406,22 @@ class BaseTopology:
             node_ids = [node_ids]
         return [f"H{str(node_id)}" for node_id in node_ids]
 
-    def compute_max_allocatable_bw(self, ps_node, worker_nodes, required_bw, max_bw=None, allow_oversubscription=False):
-        ps_node = self.format_node_ids([ps_node])[0]
-        worker_nodes = self.format_node_ids(worker_nodes)
+    def compute_max_allocatable_bw(self, ps_node, worker_nodes, time_instant, max_bw=None, allow_oversubscription=False):
+        # Assuming ps_node is already formatted as 'S*'
+        worker_nodes_formatted = self.format_node_ids(worker_nodes)
+        ps_node_formatted = ps_node  # No formatting needed for spine nodes
+
         paths = {}
         edge_usage_count = {}
         node_usage_count = {}
         modifications = []
 
-        for worker in worker_nodes:
-            if ps_node == worker:
+        for worker in worker_nodes_formatted:
+            if ps_node_formatted == worker:
                 continue
 
             try:
-                path = nx.shortest_path(self.G, source=ps_node, target=worker)
+                path = nx.shortest_path(self.G, source=ps_node_formatted, target=worker)
                 paths[worker] = path
 
                 for node in path:
@@ -423,7 +434,7 @@ class BaseTopology:
                     edge_usage_count[edge] = edge_usage_count.get(edge, 0) + 1
 
             except nx.NetworkXNoPath:
-                # print(f"No path found between PS {ps_node} and worker {worker}.")
+                # print(f"No path found between PS {ps_node_formatted} and worker {worker}.")
                 return 0  # Allocation is impossible due to no path
 
         # Compute the maximum per-worker bandwidth
@@ -458,7 +469,6 @@ class SpineLeafTopology(BaseTopology):
         self.original_reserved_bw_nodes = {node: data['reserved_bw'] for node, data in self.G.nodes(data=True)}
         self.original_reserved_bw_edges = {(u, v): data['reserved_bw'] for u, v, data in self.G.edges(data=True)}
         self.adj = self.calculate_host_to_host_adjacency_matrix()
-        
 
     def create_topology(self, num_spine, num_leaf, num_hosts_per_leaf, spine_bw, leaf_bw, link_bw_leaf_to_node, link_bw_leaf_to_spine):
         G = nx.Graph()
@@ -510,7 +520,7 @@ class SpineLeafTopology(BaseTopology):
         # print("Network state verification passed. The network is back to its original state.")
         return True
 
-    def allocate_job_max_bandwidth(self, allocation_list, total_required_bw, job_id, allow_oversubscription=False):
+    def allocate_job_max_bandwidth(self, allocation_list, total_required_bw, job_id, time_instant, allow_oversubscription=False):
         """
         Allocate the maximum possible bandwidth for a job up to the required total bandwidth.
 
@@ -530,108 +540,12 @@ class SpineLeafTopology(BaseTopology):
             # print("Allocation list is empty.")
             return 0, 0
 
+        # Corrected calculation: divide by total number of allocations, including duplicates
         required_per_connection = total_required_bw / num_connections
-        # print(f"Required bandwidth per connection: {required_per_connection}")
 
         # Allocate using the existing balanced allocation function
         allocated_per_connection_bw = self.allocate_ps_to_workers_balanced(
-            allocation_list, required_per_connection, job_id, allow_oversubscription=allow_oversubscription
-        )
-
-        total_allocated_bw = allocated_per_connection_bw * num_connections
-        # print(f"Allocated bandwidth per connection: {allocated_per_connection_bw}")
-        # print(f"Total allocated bandwidth: {total_allocated_bw}")
-
-        # if total_allocated_bw < total_required_bw:
-            # print(f"Warning: Only {total_allocated_bw} out of {total_required_bw} bandwidth could be allocated.")
-
-        return allocated_per_connection_bw, total_allocated_bw
-
-class SpineLeafTopology(BaseTopology):
-    def __init__(self, num_spine, num_leaf, num_hosts_per_leaf, spine_bw, leaf_bw, link_bw_leaf_to_node, link_bw_leaf_to_spine):
-        super().__init__()
-        self.G = self.create_topology(num_spine, num_leaf, num_hosts_per_leaf, spine_bw, leaf_bw, link_bw_leaf_to_node, link_bw_leaf_to_spine)
-        self.original_reserved_bw_nodes = {node: data['reserved_bw'] for node, data in self.G.nodes(data=True)}
-        self.original_reserved_bw_edges = {(u, v): data['reserved_bw'] for u, v, data in self.G.edges(data=True)}
-        self.adj = self.calculate_host_to_host_adjacency_matrix()
-        
-
-    def create_topology(self, num_spine, num_leaf, num_hosts_per_leaf, spine_bw, leaf_bw, link_bw_leaf_to_node, link_bw_leaf_to_spine):
-        G = nx.Graph()
-
-        spine_switches = [f"S{i}" for i in range(num_spine)]
-        for spine in spine_switches:
-            G.add_node(spine, type='spine', bandwidth=spine_bw, reserved_bw=0)
-
-        leaf_switches = [f"L{i}" for i in range(num_leaf)]
-        for leaf in leaf_switches:
-            G.add_node(leaf, type='leaf', bandwidth=leaf_bw, reserved_bw=0)
-
-        for leaf in leaf_switches:
-            for spine in spine_switches:
-                G.add_edge(leaf, spine, bandwidth=link_bw_leaf_to_spine, reserved_bw=0)
-
-        host_id = 0
-        for leaf in leaf_switches:
-            for _ in range(num_hosts_per_leaf):
-                host = f"H{host_id}"
-                G.add_node(host, type='host', bandwidth=link_bw_leaf_to_node, reserved_bw=0)
-                G.add_edge(leaf, host, bandwidth=link_bw_leaf_to_node, reserved_bw=0)
-                host_id += 1
-
-        return G
-
-    def verify_network_state(self):
-        """
-        Verify that the network's reserved bandwidths are back to their original state.
-        """
-        epsilon = 1e-6  # Tolerance level for floating-point comparison
-        # Check nodes
-        for node, data in self.G.nodes(data=True):
-            original_bw = self.original_reserved_bw_nodes.get(node, 0)
-            current_bw = data['reserved_bw']
-            if abs(original_bw - current_bw) > epsilon:
-                # print(f"Node {node} reserved_bw mismatch. Original: {original_bw}, Current: {current_bw}")
-                return False
-
-        # Check edges
-        for u, v, data in self.G.edges(data=True):
-            edge = (u, v)
-            original_bw = self.original_reserved_bw_edges.get(edge, 0)
-            current_bw = data['reserved_bw']
-            if abs(original_bw - current_bw) > epsilon:
-                # print(f"Edge {u}-{v} reserved_bw mismatch. Original: {original_bw}, Current: {current_bw}")
-                return False
-
-        # print("Network state verification passed. The network is back to its original state.")
-        return True
-
-    def allocate_job_max_bandwidth(self, allocation_list, total_required_bw, job_id, allow_oversubscription=False):
-        """
-        Allocate the maximum possible bandwidth for a job up to the required total bandwidth.
-
-        Parameters:
-            allocation_list (list): List of worker node IDs (integers) to which bandwidth is to be allocated.
-            total_required_bw (float): Total bandwidth required for the job.
-            job_id (int): Unique identifier for the job.
-            allow_oversubscription (bool): Whether to allow oversubscription of node capacities.
-
-        Returns:
-            tuple:
-                allocated_per_connection_bw (float): Bandwidth allocated per connection.
-                total_allocated_bw (float): Total bandwidth allocated for the job.
-        """
-        num_connections = len(allocation_list)
-        if num_connections == 0:
-            # print("Allocation list is empty.")
-            return 0, 0
-
-        required_per_connection = total_required_bw / num_connections
-        # print(f"Required bandwidth per connection: {required_per_connection}")
-
-        # Allocate using the existing balanced allocation function
-        allocated_per_connection_bw = self.allocate_ps_to_workers_balanced(
-            allocation_list, required_per_connection, job_id, allow_oversubscription=allow_oversubscription
+            allocation_list, required_per_connection, job_id, time_instant, allow_oversubscription=allow_oversubscription
         )
 
         total_allocated_bw = allocated_per_connection_bw * num_connections
@@ -660,39 +574,39 @@ if __name__ == "__main__":
         spine_bandwidth, leaf_bandwidth, link_bw_leaf_to_node, link_bw_leaf_to_spine
     )
 
-    # print("Adjacency Matrix calculated.")
-
     # Define the job allocation
     allocation_list = [3, 3, 4, 4, 5, 5, 6, 6, 7, 7]
     # This corresponds to hosts H3, H3, H4, H4, H5, H5, H6, H6, H7, H7
     total_bw = 35  # Total bandwidth required
     job_id = 1
 
+    # Define time instants
+    time_instant_allocation = 0
+    time_instant_deallocation = 1
+
     # Allocate resources for the job
-    # Note: Since total available node capacity is 500*2 (spines) + 500*5 (leaves) = 3500,
-    # and each connection requires up to 355.1 BW, which exceeds node capacities.
-    # Therefore, the allocation will be capped at the maximum possible without oversubscription.
-    # To strictly enforce not exceeding capacities, set allow_oversubscription=False
     allocated_per_conn, total_allocated = topology.allocate_job_max_bandwidth(
-        allocation_list, total_bw, job_id, allow_oversubscription=False
+        allocation_list, total_bw, job_id, time_instant=time_instant_allocation, allow_oversubscription=False
     )
-    # print(f"Allocation success for job {job_id}: {allocated_per_conn > 0}")
-    # print(f"Allocated bandwidth per connection for job {job_id}: {allocated_per_conn}")
-    # print(f"Total allocated bandwidth for job {job_id}: {total_allocated}")
+    print(f"Allocation success for job {job_id}: {allocated_per_conn > 0}")
+    print(f"Allocated bandwidth per connection for job {job_id}: {allocated_per_conn}")
+    print(f"Total allocated bandwidth for job {job_id}: {total_allocated}")
 
     # Display current allocated paths
-    # print(f"Current allocated paths: {topology.allocated_paths}")
+    print(f"Current allocated paths: {topology.allocated_paths}")
 
     # Save utilization statistics after allocation
     topology.save_stats_to_csv('topology_utilization_after_allocation.csv')
+    print("Saved utilization statistics after allocation.")
 
     # Deallocate resources for the job
-    deallocation_success = topology.deallocate_ps_to_workers_balanced(job_id)
-    # print(f"Deallocation success for job {job_id}: {deallocation_success}")
+    deallocation_success = topology.deallocate_ps_to_workers_balanced(job_id, time_instant_deallocation)
+    print(f"Deallocation success for job {job_id}: {deallocation_success}")
 
     # Save utilization statistics after deallocation
     topology.save_stats_to_csv('topology_utilization_after_deallocation.csv')
+    print("Saved utilization statistics after deallocation.")
 
     # Verify that the network is back to its original state
     network_state_ok = topology.verify_network_state()
-    # print(f"Network state is back to original: {network_state_ok}")
+    print(f"Network state is back to original: {network_state_ok}")

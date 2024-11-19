@@ -20,7 +20,7 @@ os.makedirs(plots_directory, exist_ok=True)
 # Define the filename pattern for main files and allocations files
 # Main files: 100J_80N_NFD_NHN_NDJ_NBW_rep_utility_FIFO.csv
 # Allocations files: 100J_80N_NFD_NHN_NDJ_NBW_rep_utility_FIFO_allocations.csv
-main_file_regex = re.compile(r'50J_50N_NFD_HN_NDJ_BW_(\d+)_(TETRIS|DRF|LIKELIHOOD|SGF|LGF|SEQ)_FIFO\.csv')
+main_file_regex = re.compile(r'(\d+)_70J_50N_NFD_HN_NDJ_SPS_BW_(TETRIS|DRF|LIKELIHOOD|SGF|LGF|SEQ)_FIFO\.csv')
 # main_file_regex = re.compile(r'150J_100N_NFD_HN_NDJ_NBW_(\d+)_(TETRIS|DRF)_FIFO\.csv')
 alloc_file_suffix = '_jobs_report.csv'
 
@@ -278,7 +278,7 @@ for filename in file_list:
 
         gpu_util_list = []
 
-        for node in range(100):
+        for node in range(50):
             node_prefix = f'node_{node}'
             initial_gpu_col = f'{node_prefix}_initial_gpu'
             used_gpu_col = f'{node_prefix}_used_gpu'

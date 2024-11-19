@@ -244,7 +244,7 @@ class Simulator_Plebiscito:
         # self.clear_screen()
         self.print_simulation_values(time_instant, job_processed, queued_jobs, running_jobs, batch_size) 
         
-    def deallocate_jobs(self, progress_bid_events, queues, jobs_to_unallocate, failure = False):
+    def deallocate_jobs(self, progress_bid_events, queues, jobs_to_unallocate, time_instant, failure = False):
         if len(jobs_to_unallocate) > 0:
             
             allocations = None
@@ -273,9 +273,9 @@ class Simulator_Plebiscito:
                     # self.topology.deallocate_ps_from_workers([allocations[0]], allocations[1:], int( self.nodes[0].bids[j['job_id']]['read_count']))
                     if self.singleps:
                         # self.topology.deallocate_ps_from_workers(allocations, int(self.nodes[0].bids[j['job_id']]['read_count']))
-                        self.topology.deallocate_ps_from_workers(j['job_id'])
+                        self.topology.deallocate_ps_from_workers(j['job_id'], time_instant)
                     else:
-                        self.topology.deallocate_ps_to_workers_balanced(j['job_id'])
+                        self.topology.deallocate_ps_to_workers_balanced(j['job_id'], time_instant)
                     self.topology.save_stats_to_csv(self.filename+'_topo')
                     
                         
@@ -421,7 +421,7 @@ class Simulator_Plebiscito:
             if len(jobs_to_unallocate) > 0:
                 logger.info(f"\n[SIM] Deallocating completed jobs! {list(jobs_to_unallocate['job_id'])}")
                 # logger.debug(sim_stats)
-                self.deallocate_jobs(progress_bid_events, queues, jobs_to_unallocate)
+                self.deallocate_jobs(progress_bid_events, queues, jobs_to_unallocate, time_instant)
                 completed_jobs += len(jobs_to_unallocate)
                 utils.verify_tot_res(self.filename, self.nodes, running_jobs, self.tot_nodes_cpu, self.tot_nodes_gpu)
 
@@ -450,7 +450,7 @@ class Simulator_Plebiscito:
 
                             stopped_j, running_jobs = job.stop_job(running_jobs, time_instant, job_id)
                             jobs_report = pd.concat([jobs_report, stopped_j])
-                            self.deallocate_jobs(progress_bid_events, queues, stopped_j)
+                            self.deallocate_jobs(progress_bid_events, queues, stopped_j, time_instant)
                             completed_jobs += 1
                             utils.verify_tot_res(self.filename, self.nodes, running_jobs, self.tot_nodes_cpu, self.tot_nodes_gpu)
                         # else:
@@ -552,8 +552,8 @@ class Simulator_Plebiscito:
                                 # Fetch previous bid if it exists
 
                                 
-                                if job_id == 18590: #and time_instant ==53:# and node.id == 40 and time_now == 2 :
-                                    print('check node behaviourr')
+                                # if job_id == 18590: #and time_instant ==53:# and node.id == 40 and time_now == 2 :
+                                #     print('check node behaviourr')
 
                                 if job_id in node.bids:
                                     prev_bid = copy.deepcopy(node.bids[job_id]['auction_id'])
@@ -626,7 +626,7 @@ class Simulator_Plebiscito:
                                 logger.info('[MSG] Do not enqueue to unassigned jobs list '
                                             f"{final_allocations['gpu_discarded']} {final_allocations['cpu_discarded']}")
 
-                            self.deallocate_jobs(progress_bid_events, queues, u_df, failure=False)
+                            self.deallocate_jobs(progress_bid_events, queues, u_df, time_instant, failure=False)
 
                             return unassigned_ids, unassigned_jobs, processed_jobs
 
@@ -684,15 +684,14 @@ class Simulator_Plebiscito:
                                             worker_nodes=allocations[1:],
                                             required_bw = job_speedup[job_id]['read_count'],
                                             max_bw=job_speedup[job_id]['alloc_bw'],
-                                            job_id=job_id)
+                                            job_id=job_id,
+                                            time_instant=time_instant)
                                     else:
-                                        bw_ps = job_speedup[job_id]['read_count'] / len(ps_on)
-                                        # allocated_bw = self.topology.allocate_ps_to_workers_balanced(
-                                        #     worker_nodes=allocations,
-                                        #     required_bw=bw_ps,
-                                        #     job_id=job_id)
                                         allocated_bw, total_allocated = self.topology.allocate_job_max_bandwidth(
-                                            allocations, bw_ps, job_id
+                                            allocation_list=allocations,
+                                            total_required_bw=job_speedup[job_id]['read_count'],
+                                            job_id=job_id, 
+                                            time_instant=time_instant
                                         )
                                         # print(f"Allocation success for job {job_id}: {allocated_per_conn > 0}")
                                         # print(f"Allocated bandwidth per connection for job {job_id}: {allocated_per_conn}")

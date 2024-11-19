@@ -7,7 +7,7 @@ p12/
 nx-guides/
 logs/
 res/
-
+tikz_env/
 # C extensions
 *.so
 *.csv

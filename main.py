@@ -242,8 +242,8 @@ def main(rep: str):
 
             # Define experiment scenarios
             experiment_scenarios = [
-                {'singleps': True, 'with_bw': True},
                 {'singleps': False, 'with_bw': True},
+                {'singleps': True, 'with_bw': True},
                 {'singleps': True, 'with_bw': False}
             ]
 

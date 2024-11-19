@@ -20,7 +20,9 @@ os.makedirs(plots_directory, exist_ok=True)
 # Main files: 150J_100N_NFD_HN_NDJ_NBW_rep_utility_FIFO.csv
 # Allocations files: 150J_100N_NFD_HN_NDJ_NBW_rep_utility_FIFO_jobs_report.csv
 
-main_file_regex = re.compile(r'50J_50N_NFD_HN_NDJ_BW_(\d+)_(TETRIS|DRF|LIKELIHOOD|SGF|LGF|SEQ)_FIFO\.csv')
+main_file_regex = re.compile(r'(\d+)_70J_50N_NFD_HN_NDJ_SPS_BW_(TETRIS|DRF|LIKELIHOOD|SGF|LGF|SEQ)_FIFO\.csv')
+main_file_regex = re.compile(r'(\d+)_70J_50N_NFD_HN_NDJ_SPS_NBW_(TETRIS|DRF|LIKELIHOOD|SGF|LGF|SEQ)_FIFO\.csv')
+main_file_regex = re.compile(r'(\d+)_70J_50N_NFD_HN_NDJ_MPS_BW_(TETRIS|DRF|LIKELIHOOD|SGF|LGF|SEQ)_FIFO\.csv')
 alloc_file_suffix = '_jobs_report.csv'
 
 # Define the utilities and replications to process

@@ -73,8 +73,9 @@ class BaseTopology:
 
         return adj_matrix
 
-    def record_utilization(self):
-        record = {'allocation_step': self.allocation_step}
+    def record_utilization(self, time_instant, job_id):
+        record = {'allocation_step': time_instant,
+                  'job_id': job_id}
         
         for node, data in self.G.nodes(data=True):
             if data['type'] in ['spine', 'leaf', 'host']:
@@ -100,7 +101,7 @@ class BaseTopology:
         df = pd.DataFrame(self.utilization_records)
         df.to_csv(filename, index=False)
 
-    def deallocate_ps_from_workers(self, job_id):
+    def deallocate_ps_from_workers(self, job_id, time_instant):
         allocations = self.allocated_paths.get(job_id, [])
         if not allocations:
             # print(f"No allocations found for job_id {job_id}")
@@ -121,7 +122,7 @@ class BaseTopology:
 
         # Remove allocations for this job_id
         del self.allocated_paths[job_id]
-        self.record_utilization()
+        self.record_utilization(time_instant,job_id)
         return True
 
     def format_node_ids(self, node_ids):
@@ -129,7 +130,7 @@ class BaseTopology:
             node_ids = [node_ids]
         return [f"H{str(node_id)}" if not str(node_id).startswith('H') else str(node_id) for node_id in node_ids]
 
-    def compute_max_allocatable_bw(self, ps_node, worker_nodes, required_bw, job_id, max_bw=None, allow_oversubscription=False):
+    def compute_max_allocatable_bw(self, ps_node, worker_nodes, required_bw, job_id, time_instant, max_bw=None, allow_oversubscription=False):
         ps_node = self.format_node_ids([ps_node])[0]
         worker_nodes = self.format_node_ids(worker_nodes)
         paths = {}
@@ -218,7 +219,7 @@ class BaseTopology:
                     path = paths[worker]
                     self.allocated_paths[job_id].append((ps_node, worker, path, max_bw_per_worker))
 
-                self.record_utilization()
+                self.record_utilization(time_instant,job_id)
 
             except Exception as e:
                 # print(f"Exception occurred during allocation: {e}")
