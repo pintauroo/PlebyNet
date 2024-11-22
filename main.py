@@ -179,7 +179,10 @@ def run_simulation(rep: str, config: dict, dataset: pd.DataFrame, utility: Utili
                  f"Scheduling={scheduling_algorithm.name}, SinglePS={singleps}, WithBW={with_bw}")
 
 def main(rep: str):
-    config_file = 'config.yaml'
+    # config_file = 'config_100_100n_100bw.yaml'
+    # config_file = 'config_200_100n_25bw.yaml'
+    # config_file = 'config_300_50n_100bw.yaml'
+    config_file = 'config_400_50n_25bw.yaml'
     config = load_config(config_file)
 
     # Define all required top-level configuration keys

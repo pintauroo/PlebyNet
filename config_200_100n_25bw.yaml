@@ -1,0 +1,65 @@
+# Configuration for Simulator_Plebiscito
+
+# REmember to set the
+#  job duration
+# output filename
+
+# General Settings
+
+n_failure: 0
+csv_file_path: "traces/"
+csv_file: "cleaned_dfws.csv"
+# csv_file: "50J_50N_NFD_HN_NDJ_BW_24_TETRIS_FIFO_dataset.csv"
+
+
+# with_bw: false
+with_bw: true
+
+# Topology Selection
+topology_type: "LeafSpine"
+
+
+
+# # Topology Settings (SMALL 10N <-- 25Gbps --> 5L  <-- 42Gbps --> 2S)
+num_jobs: 200
+num_nodes: 100
+LeafSpine:
+  num_spine_switches: 5
+  num_leaf_switches: 10
+  host_per_leaf: 10
+  max_spine_capacity: 167
+  max_leaf_capacity: 250
+  max_node_bw: 25
+  max_leaf_to_spine_bw: 17
+
+
+
+  # Infinite Bandwidth Option
+  infinite_bw:
+    max_spine_capacity: 99999999999
+    max_leaf_capacity: 99999999999
+    max_node_bw: 99999999999
+    max_leaf_to_spine_bw: 99999999999
+
+# Simulation Parameters
+utils:
+  - "TETRIS"
+  - "DRF"
+  - "UTIL"
+  - "LIKELIHOOD"
+  - "SGF"
+  - "LGF"
+  - "SEQ"
+sched:
+  - "FIFO"
+
+# Jobs settings
+
+# discard_job: true
+discard_job: false
+
+heterogeneous_nodes: true
+# heterogeneous_nodes: false
+
+# fix_duration: true
+fix_duration: false

@@ -5,8 +5,7 @@
 # output filename
 
 # General Settings
-num_jobs: 70
-num_nodes: 50
+
 n_failure: 0
 csv_file_path: "traces/"
 csv_file: "cleaned_dfws.csv"
@@ -19,15 +18,23 @@ with_bw: true
 # Topology Selection
 topology_type: "LeafSpine"
 
-# Topology Settings
+
+
+
+# # Topology Settings (SMALL 10N <-- 25Gbps --> 5L  <-- 42Gbps --> 2S)
+num_jobs: 70
+num_nodes: 50
 LeafSpine:
   num_spine_switches: 2
   num_leaf_switches: 5
   host_per_leaf: 10
-  max_spine_capacity: 500
+  max_spine_capacity: 208
   max_leaf_capacity: 500
-  max_node_bw: 100
-  max_leaf_to_spine_bw: 100
+  max_node_bw: 25
+  max_leaf_to_spine_bw: 42
+
+
+
 
   # Infinite Bandwidth Option
   infinite_bw:
