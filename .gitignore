@@ -12,6 +12,7 @@ tikz_env/
 *.so
 *.csv
 out*
+*.svg
 
 # Distribution / packaging
 .Python

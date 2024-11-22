@@ -16,6 +16,9 @@ data_directory = '.'  # Adjust the path if necessary
 base_plots_directory = 'plots'
 os.makedirs(base_plots_directory, exist_ok=True)
 
+# Define the number of intervals (quartiles by default)
+num_intervals = 4  # You can change this value to set different interval counts
+
 # Define a list of configurations, each with its own regex pattern and plot configurations
 file_configurations = [
     {
@@ -218,76 +221,75 @@ all_jobs_df = pd.concat(all_jobs_metrics, ignore_index=True)
 print(f"\nTotal number of jobs collected across all configurations: {len(all_jobs_df)}")
 
 # ------------------------------
-# 6. Categorize Jobs into Quartiles Based on GPU Requirement
+# 6. Categorize Jobs into Intervals Based on GPU Requirement
 # ------------------------------
 
-# Assign quartiles using pd.qcut, without specifying labels
-# Using labels=False to get integer labels
+# Assign intervals using pd.qcut with a dynamic number of intervals
 try:
-    all_jobs_df['Quartile'], bins = pd.qcut(
+    all_jobs_df['Interval'], bins = pd.qcut(
         all_jobs_df['num_gpu'],
-        q=4,
+        q=num_intervals,
         labels=False,
         retbins=True,
         duplicates='drop'
     )
 except ValueError as e:
-    print(f"\nError in quartile assignment: {e}")
+    print(f"\nError in interval assignment: {e}")
     exit(1)
 
 # Extract unique bin edges
 unique_bins = np.unique(bins)
 
-# Calculate the number of quartiles assigned
-num_quartiles = len(unique_bins) - 1  # number of intervals
+# Calculate the number of intervals assigned
+num_actual_intervals = len(unique_bins) - 1  # number of intervals
 
-print(f"\nNumber of quartiles assigned: {num_quartiles}")
+print(f"\nNumber of intervals assigned: {num_actual_intervals}")
 
-# Define quartile labels based on bins
-quartile_labels = []
+# Define interval labels based on bins
+interval_labels = []
 labels_available = []
 
-for i in range(num_quartiles):
-    quartile_labels.append(
-        f"Q{i+1} ({unique_bins[i]:.1f} - {unique_bins[i+1]:.1f} GPUs)"
+for i in range(num_actual_intervals):
+    interval_labels.append(
+        f"I{i+1} ({unique_bins[i]:.1f} - {unique_bins[i+1]:.1f} GPUs)"
     )
-    labels_available.append(f"Q{i+1}")
+    labels_available.append(f"I{i+1}")
 
-# Create mapping from labels_available to quartile_labels
-quartile_mapping = dict(zip(labels_available, quartile_labels))
+# Create mapping from labels_available to interval_labels
+interval_mapping = dict(zip(labels_available, interval_labels))
 
-# Map quartiles to labels
-all_jobs_df['Quartile'] = all_jobs_df['Quartile'].astype(int).map(
-    lambda x: labels_available[x] if x < num_quartiles else np.nan)
+# Map intervals to labels
+all_jobs_df['Interval'] = all_jobs_df['Interval'].astype(int).map(
+    lambda x: labels_available[x] if x < num_actual_intervals else np.nan)
 
-all_jobs_df['Quartile_Range'] = all_jobs_df['Quartile'].map(quartile_mapping)
+all_jobs_df['Interval_Range'] = all_jobs_df['Interval'].map(interval_mapping)
 
-# Verify quartile assignments
-print("\nQuartile Distribution:")
-print(all_jobs_df['Quartile_Range'].value_counts())
+# Verify interval assignments
+print("\nInterval Distribution:")
+print(all_jobs_df['Interval_Range'].value_counts())
 
 # ------------------------------
-# 7. Analyze JCT Differences Between Quartiles Across Utility Functions and Configurations
+# 7. Analyze JCT Differences Between Intervals Across Utility Functions and Configurations
 # ------------------------------
 
-# Group by Configuration, Utility Function, and Quartile, then compute aggregate statistics
+# Group by Configuration, Utility Function, and Interval, then compute aggregate statistics
 jct_stats = all_jobs_df.groupby(
-    ['Configuration', 'Utility_Function', 'Quartile']).agg(
+    ['Configuration', 'Utility_Function', 'Interval']).agg(
     JCT_Mean=('JCT', 'mean'),
     JCT_Median=('JCT', 'median'),
     JCT_STD=('JCT', 'std'),
     Job_Count=('JCT', 'count')
 ).reset_index()
 
-# Merge quartile range labels
-jct_stats['Quartile_Range'] = jct_stats['Quartile'].map(quartile_mapping)
+# Merge interval range labels
+jct_stats['Interval_Range'] = jct_stats['Interval'].map(interval_mapping)
 
-# Handle cases where Quartile_Range might be missing
-jct_stats['Quartile_Range'] = jct_stats['Quartile_Range'].fillna(
-    jct_stats['Quartile'])
+# Handle cases where Interval_Range might be missing
+jct_stats['Interval_Range'] = jct_stats['Interval_Range'].fillna(
+    jct_stats['Interval'])
 
 # Debugging: Check jct_stats
-print("\nJCT Statistics by Configuration, Utility Function, and Quartile:")
+print("\nJCT Statistics by Configuration, Utility Function, and Interval:")
 print(jct_stats)
 
 # ------------------------------
@@ -297,33 +299,32 @@ print(jct_stats)
 # Set the plotting style
 sns.set(style="whitegrid")
 
-# 8.a. CDF Plot: Scaled JCT by Quartile, Utility Function, and Configuration
 def plot_jct_scaled_cdf(df, plots_dir, config_name):
     """
-    Plot the CDF of scaled JCT (JCT_Scaled) for each utility function and configuration within each quartile.
+    Plot the CDF of scaled JCT (JCT_Scaled) for each utility function and configuration within each interval.
     All configurations and utilities are overlaid in the same plot for direct comparison.
     """
-    quartiles = df['Quartile_Range'].unique()
-    # Sort quartiles based on the lower bound of GPU range
-    quartiles_sorted = sorted(quartiles, key=lambda x: float(x.split('(')[1].split()[0]))
+    intervals = df['Interval_Range'].unique()
+    # Sort intervals based on the lower bound of GPU range
+    intervals_sorted = sorted(intervals, key=lambda x: float(x.split('(')[1].split()[0]))
 
-    for quartile in quartiles_sorted:
+    for interval in intervals_sorted:
         plt.figure(figsize=(14, 8))
-        subset_quartile = df[df['Quartile_Range'] == quartile]
-        if subset_quartile.empty:
-            print(f"\n - No data available for quartile '{quartile}'. Skipping plot.")
+        subset_interval = df[df['Interval_Range'] == interval]
+        if subset_interval.empty:
+            print(f"\n - No data available for interval '{interval}'. Skipping plot.")
             plt.close()
             continue
         # Define hue as a combination of Configuration and Utility_Function
-        subset_quartile['Config_Utility'] = subset_quartile['Configuration'] + ' - ' + subset_quartile['Utility_Function']
-        utility_configs = subset_quartile['Config_Utility'].unique()
+        subset_interval['Config_Utility'] = subset_interval['Configuration'] + ' - ' + subset_interval['Utility_Function']
+        utility_configs = subset_interval['Config_Utility'].unique()
 
         # Debugging: Check utilities and configurations present
-        print(f"\nPlotting CDF for {config_name} - {quartile}:")
+        print(f"\nPlotting CDF for {config_name} - {interval}:")
         print(f" - Combined Utilities present: {utility_configs.tolist()}")
 
         for cu in utility_configs:
-            subset = subset_quartile[subset_quartile['Config_Utility'] == cu]
+            subset = subset_interval[subset_interval['Config_Utility'] == cu]
             if subset.empty:
                 print(f"   - No data for '{cu}'. Skipping.")
                 continue
@@ -331,7 +332,7 @@ def plot_jct_scaled_cdf(df, plots_dir, config_name):
             cdf = np.arange(1, len(sorted_jct_scaled)+1) / len(sorted_jct_scaled)
             plt.plot(sorted_jct_scaled, cdf, label=cu)
 
-        plt.title(f"CDF of Scaled JCT for {quartile} ({config_name})", fontsize=16)
+        plt.title(f"CDF of Scaled JCT for {interval} ({config_name})", fontsize=16)
         plt.xlabel('Scaled Job Completion Time (JCT / Duration)', fontsize=14)
         plt.ylabel('CDF', fontsize=14)
         plt.legend(title='Configuration - Utility', fontsize=10, title_fontsize=12, loc='lower right')
@@ -340,39 +341,38 @@ def plot_jct_scaled_cdf(df, plots_dir, config_name):
         plt.grid(True)
         plt.tight_layout()
         # Create a safe filename by replacing spaces and parentheses
-        safe_quartile = quartile.replace(' ', '_').replace('(', '').replace(')', '').replace('-', 'to')
-        plot_filename = os.path.join(plots_dir, f'cdf_jct_scaled_{config_name}_{safe_quartile}.png')
+        safe_interval = interval.replace(' ', '_').replace('(', '').replace(')', '').replace('-', 'to')
+        plot_filename = os.path.join(plots_dir, f'cdf_jct_scaled_{config_name}_{safe_interval}.png')
         plt.savefig(plot_filename)
         plt.close()
         print(f" - CDF plot saved as '{plot_filename}'.")
 
-# 8.b. Survival Function Plot: Tail Distribution by Quartile, Utility Function, and Configuration
 def plot_jct_scaled_survival(df, plots_dir, config_name):
     """
-    Plot the Survival Function (1 - CDF) of scaled JCT (JCT_Scaled) for each utility function and configuration within each quartile.
+    Plot the Survival Function (1 - CDF) of scaled JCT (JCT_Scaled) for each utility function and configuration within each interval.
     All configurations and utilities are overlaid in the same plot for direct comparison.
     """
-    quartiles = df['Quartile_Range'].unique()
-    # Sort quartiles based on the lower bound of GPU range
-    quartiles_sorted = sorted(quartiles, key=lambda x: float(x.split('(')[1].split()[0]))
+    intervals = df['Interval_Range'].unique()
+    # Sort intervals based on the lower bound of GPU range
+    intervals_sorted = sorted(intervals, key=lambda x: float(x.split('(')[1].split()[0]))
 
-    for quartile in quartiles_sorted:
+    for interval in intervals_sorted:
         plt.figure(figsize=(14, 8))
-        subset_quartile = df[df['Quartile_Range'] == quartile]
-        if subset_quartile.empty:
-            print(f"\n - No data available for quartile '{quartile}'. Skipping survival plot.")
+        subset_interval = df[df['Interval_Range'] == interval]
+        if subset_interval.empty:
+            print(f"\n - No data available for interval '{interval}'. Skipping survival plot.")
             plt.close()
             continue
         # Define hue as a combination of Configuration and Utility_Function
-        subset_quartile['Config_Utility'] = subset_quartile['Configuration'] + ' - ' + subset_quartile['Utility_Function']
-        utility_configs = subset_quartile['Config_Utility'].unique()
+        subset_interval['Config_Utility'] = subset_interval['Configuration'] + ' - ' + subset_interval['Utility_Function']
+        utility_configs = subset_interval['Config_Utility'].unique()
 
         # Debugging: Check utilities and configurations present
-        print(f"\nPlotting Survival Function for {config_name} - {quartile}:")
+        print(f"\nPlotting Survival Function for {config_name} - {interval}:")
         print(f" - Combined Utilities present: {utility_configs.tolist()}")
 
         for cu in utility_configs:
-            subset = subset_quartile[subset_quartile['Config_Utility'] == cu]
+            subset = subset_interval[subset_interval['Config_Utility'] == cu]
             if subset.empty:
                 print(f"   - No data for '{cu}'. Skipping.")
                 continue
@@ -381,7 +381,7 @@ def plot_jct_scaled_survival(df, plots_dir, config_name):
             survival = 1 - cdf
             plt.plot(sorted_jct_scaled, survival, label=cu)
 
-        plt.title(f"Survival Function of Scaled JCT for {quartile} ({config_name})", fontsize=16)
+        plt.title(f"Survival Function of Scaled JCT for {interval} ({config_name})", fontsize=16)
         plt.xlabel('Scaled Job Completion Time (JCT / Duration)', fontsize=14)
         plt.ylabel('Survival Function (1 - CDF)', fontsize=14)
         plt.legend(title='Configuration - Utility', fontsize=10, title_fontsize=12, loc='upper right')
@@ -390,14 +390,16 @@ def plot_jct_scaled_survival(df, plots_dir, config_name):
         plt.grid(True)
         plt.tight_layout()
         # Create a safe filename by replacing spaces and parentheses
-        safe_quartile = quartile.replace(' ', '_').replace('(', '').replace(')', '').replace('-', 'to')
-        plot_filename = os.path.join(plots_dir, f'survival_jct_scaled_{config_name}_{safe_quartile}.png')
+        safe_interval = interval.replace(' ', '_').replace('(', '').replace(')', '').replace('-', 'to')
+        plot_filename = os.path.join(plots_dir, f'survival_jct_scaled_{config_name}_{safe_interval}.png')
         plt.savefig(plot_filename)
         plt.close()
         print(f" - Survival Function plot saved as '{plot_filename}'.")
 
-# 8.c. Histogram: Distribution of num_gpu Across All Jobs (Combined)
 def plot_num_gpu_distribution(df, plots_dir, config_name):
+    """
+    Plot the distribution of GPU requirements across all jobs.
+    """
     plt.figure(figsize=(10, 6))
     sns.histplot(data=df, x='num_gpu', bins=50, kde=True, color='skyblue')
     plt.title(f'Distribution of GPU Requirements Across All Jobs ({config_name})', fontsize=16)
@@ -411,12 +413,14 @@ def plot_num_gpu_distribution(df, plots_dir, config_name):
     plt.close()
     print(f"\nHistogram of GPU distribution saved as '{filename}'.")
 
-# 8.d. Boxplot: JCT by Utility Function, Quartile, and Configuration
 def plot_jct_boxplot(df, plots_dir, config_name):
+    """
+    Plot a boxplot of Job Completion Time (JCT) by Interval and Utility Function.
+    """
     plt.figure(figsize=(16, 10))
-    sns.boxplot(x='Quartile_Range', y='JCT', hue='Utility_Function', data=df)
-    plt.title(f'Boxplot of Job Completion Time (JCT) by Quartile and Utility Function ({config_name})', fontsize=16)
-    plt.xlabel('GPU Requirement Quartiles', fontsize=14)
+    sns.boxplot(x='Interval_Range', y='JCT', hue='Utility_Function', data=df)
+    plt.title(f'Boxplot of Job Completion Time (JCT) by Interval and Utility Function ({config_name})', fontsize=16)
+    plt.xlabel('GPU Requirement Intervals', fontsize=14)
     plt.ylabel('Job Completion Time (JCT)', fontsize=14)
     plt.legend(title='Utility Functions', fontsize=12, title_fontsize=14, loc='upper right')
     plt.xticks(fontsize=12)
@@ -466,22 +470,22 @@ os.makedirs(metrics_directory, exist_ok=True)
 
 # Save the JCT statistics to a CSV file
 jct_stats_csv_path = os.path.join(
-    metrics_directory, 'jct_stats_by_configuration_utility_quartile.csv')
+    metrics_directory, 'jct_stats_by_configuration_utility_interval.csv')
 jct_stats.to_csv(jct_stats_csv_path, index=False)
 print(f"\nJCT statistics saved to '{jct_stats_csv_path}'.")
 
-# Save all job data with quartile assignments to a CSV file
+# Save all job data with interval assignments to a CSV file
 all_jobs_csv_path = os.path.join(
-    metrics_directory, 'all_jobs_with_quartiles_and_configurations.csv')
+    metrics_directory, 'all_jobs_with_intervals_and_configurations.csv')
 all_jobs_df.to_csv(all_jobs_csv_path, index=False)
-print(f"All job data with quartiles and configurations saved to '{all_jobs_csv_path}'.")
+print(f"All job data with intervals and configurations saved to '{all_jobs_csv_path}'.")
 
 # ------------------------------
 # 11. Summary of Results
 # ------------------------------
 
 # Display the JCT statistics
-print("\nJob Completion Time (JCT) Statistics by Configuration, Utility Function, and Quartile:")
+print("\nJob Completion Time (JCT) Statistics by Configuration, Utility Function, and Interval:")
 print(jct_stats)
 
 # Optionally, display the first few rows of all_jobs_df

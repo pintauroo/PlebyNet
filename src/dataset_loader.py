@@ -273,16 +273,16 @@ def init_go_(num_jobs, filename, seed, fix_duration):
         job_dict["current_duration"] = 0.0 # this value keeps track of the job's current duration with respect to the speedup. Not useful to plot, it is used for internal purposes
         job_dict["speedup"] = 1
         job_dict["mnallc"] = job_dict['num_pod']
-        # job_dict['num_pod'] = 10
+        job_dict['num_pod'] = 10
 
 
         job_dict["max_pod"] = job_dict['num_pod']
         # job_dict["write_count"] = job_dict["read_count"] = int(random.randint(10, int(100/job_dict['num_pod'])))
         # job_dict["write_count"] = job_dict["read_count"] = max(job_dict["write_count"],job_dict["read_count"])
-        job_dict["read_count"] =  int(job_dict["read_count"] * 100)
-        job_dict["write_count"] = int(job_dict["write_count"] * 100)
-        # job_dict["read_count"] =  int(2000)
-        # job_dict["write_count"] = int(2000)
+        job_dict["read_count"] =  int(job_dict["read_count"])
+        job_dict["write_count"] = int(job_dict["write_count"])
+        # job_dict["read_count"] =  int(1000)
+        # job_dict["write_count"] = int(1000)
         # job_dict['num_gpu'] = int(800)
         # job_dict['num_cpu'] = int(9600)
         # # job_dict['read_count'] = job_dict['num_gpu'] * job_dict['num_cpu']  * job_dict['num_pod'] / 10000

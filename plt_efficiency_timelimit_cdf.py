@@ -4,6 +4,7 @@ import os
 import re
 import matplotlib.pyplot as plt
 import seaborn as sns
+import warnings
 
 # ------------------------------
 # 1. Setup and Configuration
@@ -17,17 +18,18 @@ plots_directory = 'plots'
 os.makedirs(plots_directory, exist_ok=True)
 
 # Define the filename pattern for main files and allocations files
-# Main files: 150J_100N_NFD_HN_NDJ_NBW_rep_utility_FIFO.csv
-# Allocations files: 150J_100N_NFD_HN_NDJ_NBW_rep_utility_FIFO_jobs_report.csv
-
-main_file_regex = re.compile(r'(\d+)_70J_50N_NFD_HN_NDJ_SPS_BW_(TETRIS|DRF|LIKELIHOOD|SGF|LGF|SEQ)_FIFO\.csv')
-main_file_regex = re.compile(r'(\d+)_70J_50N_NFD_HN_NDJ_SPS_NBW_(TETRIS|DRF|LIKELIHOOD|SGF|LGF|SEQ)_FIFO\.csv')
-main_file_regex = re.compile(r'(\d+)_70J_50N_NFD_HN_NDJ_MPS_BW_(TETRIS|DRF|LIKELIHOOD|SGF|LGF|SEQ)_FIFO\.csv')
+# Combined all regex patterns into one using alternation
+main_file_regex = re.compile(
+    r'(\d+)_70J_50N_NFD_HN_NDJ_(?:SPS_BW|SPS_NBW|MPS_BW)_(TETRIS|DRF|LIKELIHOOD|SGF|LGF|SEQ)_FIFO\.csv'
+)
 alloc_file_suffix = '_jobs_report.csv'
 
 # Define the utilities and replications to process
 selected_utilities = ['TETRIS', 'DRF', 'LIKELIHOOD', 'SGF', 'LGF', 'SEQ']
 selected_reps = range(1, 50)  # Replications 1 to 49
+
+# Define the number of intervals
+num_intervals = 2  # Change this value to 1, 2, 4, etc., as needed
 
 # List all main CSV files matching the pattern
 file_list = [f for f in os.listdir(data_directory) if main_file_regex.match(f)]
@@ -214,21 +216,47 @@ for filename in file_list:
     gpu_request_tot_dict[(utility_function, rep)] = gpu_request_tot
 
     # ------------------------------
-    # 4.b. Compute other metrics as needed (optional)
+    # 4.b. Compute Additional Metrics
     # ------------------------------
-    # If you have other metrics to compute per file, do it here.
-    # For example, you can compute throughput, latency, etc., similar to the original code.
-    # However, since the user requested to focus on gpu_request_tot, this section can be adjusted as needed.
+    # Compute utilization ratios (Assuming 'num_gpu' represents utilization)
+    # This is a placeholder; adjust based on actual data representation
+    utilization_ratios = jobs_df['num_gpu']
 
-    # Append basic metrics to master_metrics
+    # Compute Jain's Fairness Index
+    jains_index = compute_jains_index(utilization_ratios)
+
+    # Compute Gini's Index
+    ginis_index = compute_ginis_index(utilization_ratios)
+
+    # Compute Throughput (Total jobs completed)
+    # Assuming 'complete_time' represents time units, take the max as current_time
+    current_time = jobs_df['complete_time'].max()
+    throughput = compute_throughput(jobs_df, current_time)
+
+    # Compute Job Latency (Average latency)
+    job_latency = compute_job_latency(jobs_df, current_time)
+
+    # Compute Queue Length at current_time
+    queue_length = compute_queue_length(jobs_df, current_time)
+
+    # Compute Active Jobs at current_time
+    active_jobs = compute_active_jobs(jobs_df, current_time)
+
+    # Append all metrics to master_metrics
     master_metrics.append({
         'Utility_Function': utility_function,
         'Replication': rep,
-        'gpu_request_tot': gpu_request_tot
+        'gpu_request_tot': gpu_request_tot,
+        'jains_index': jains_index,
+        'ginis_index': ginis_index,
+        'throughput': throughput,
+        'job_latency': job_latency,
+        'queue_length': queue_length,
+        'active_jobs': active_jobs
     })
 
 # ------------------------------
-# 5. Assign Quartiles Based on gpu_request_tot
+# 5. Assign Intervals Based on gpu_request_tot
 # ------------------------------
 
 # Convert the gpu_request_tot_dict to a DataFrame
@@ -237,67 +265,65 @@ gpu_request_df = pd.DataFrame([
     for key, value in gpu_request_tot_dict.items()
 ])
 
-# Compute quartiles
-quartile_edges = gpu_request_df['gpu_request_tot'].quantile([0, 0.25, 0.5, 0.75, 1.0]).values
+# Compute quantile edges based on the number of intervals
+quantiles = np.linspace(0, 1, num_intervals + 1)
+quartile_edges = gpu_request_df['gpu_request_tot'].quantile(quantiles).values
 
-# Define quartile labels
-quartile_labels = [
-    f"Q1 ({quartile_edges[0]:.1f} - {quartile_edges[1]:.1f} GPUs)",
-    f"Q2 ({quartile_edges[1]:.1f} - {quartile_edges[2]:.1f} GPUs)",
-    f"Q3 ({quartile_edges[2]:.1f} - {quartile_edges[3]:.1f} GPUs)",
-    f"Q4 ({quartile_edges[3]:.1f} - {quartile_edges[4]:.1f} GPUs)"
-]
+# Define interval labels dynamically
+interval_labels = [f"Q{i+1}" for i in range(num_intervals)]
+interval_range_labels = []
 
-# Function to assign quartile
-def assign_quartile(x, edges):
-    if x <= edges[1]:
-        return 'Q1'
-    elif x <= edges[2]:
-        return 'Q2'
-    elif x <= edges[3]:
-        return 'Q3'
-    else:
-        return 'Q4'
+for i in range(num_intervals):
+    lower = quartile_edges[i]
+    upper = quartile_edges[i + 1]
+    interval_range_labels.append(f"Q{i+1} ({lower:.1f} - {upper:.1f} GPUs)")
 
-# Assign quartiles
-gpu_request_df['Quartile'] = gpu_request_df['gpu_request_tot'].apply(lambda x: assign_quartile(x, quartile_edges))
+# Function to assign interval
+def assign_interval(x, edges):
+    for i in range(len(edges) - 1):
+        if i < len(edges) - 2:
+            if edges[i] <= x < edges[i + 1]:
+                return f"Q{i+1}"
+        else:
+            # Include the right edge in the last interval
+            if edges[i] <= x <= edges[i + 1]:
+                return f"Q{i+1}"
+    return None  # In case x doesn't fall into any interval
 
-# Map quartile labels
-quartile_mapping = {
-    'Q1': quartile_labels[0],
-    'Q2': quartile_labels[1],
-    'Q3': quartile_labels[2],
-    'Q4': quartile_labels[3]
-}
-gpu_request_df['Quartile_Range'] = gpu_request_df['Quartile'].map(quartile_mapping)
+# Assign intervals
+gpu_request_df['Interval'] = gpu_request_df['gpu_request_tot'].apply(lambda x: assign_interval(x, quartile_edges))
+
+# Handle any missing assignments
+missing_intervals = gpu_request_df['Interval'].isnull().sum()
+if missing_intervals > 0:
+    print(f"Warning: {missing_intervals} entries did not fit into any interval.")
+
+# Create a mapping for interval labels with ranges
+interval_mapping = {f"Q{i+1}": interval_range_labels[i] for i in range(num_intervals)}
+gpu_request_df['Interval_Range'] = gpu_request_df['Interval'].map(interval_mapping)
 
 # ------------------------------
 # 6. Save the Results in a Dictionary
 # ------------------------------
 
 # Convert gpu_request_df to a dictionary if needed
-# For example, you can have quartile-wise lists
-quartile_dict = {
-    'Q1': gpu_request_df[gpu_request_df['Quartile'] == 'Q1']['gpu_request_tot'].tolist(),
-    'Q2': gpu_request_df[gpu_request_df['Quartile'] == 'Q2']['gpu_request_tot'].tolist(),
-    'Q3': gpu_request_df[gpu_request_df['Quartile'] == 'Q3']['gpu_request_tot'].tolist(),
-    'Q4': gpu_request_df[gpu_request_df['Quartile'] == 'Q4']['gpu_request_tot'].tolist(),
-}
+# For example, you can have interval-wise lists
+interval_dict = {f"Q{i+1}": gpu_request_df[gpu_request_df['Interval'] == f"Q{i+1}"]['gpu_request_tot'].tolist() for i in range(num_intervals)}
 
 # ------------------------------
 # 7. Comparative Analysis and Visualization
 # ------------------------------
 
-# Define a color palette for different quartiles
-quartiles = ['Q1', 'Q2', 'Q3', 'Q4']
-palette = sns.color_palette("husl", len(quartiles))
+# Define a color palette for different intervals
+palette = sns.color_palette("husl", num_intervals)
 
-# Plot CDF for gpu_request_tot divided into quartiles
-def plot_cdf_by_quartile(quartile_data, quartile_labels, xlabel, ylabel, title, filename):
+# Plot CDF for gpu_request_tot divided into intervals
+def plot_cdf_by_interval(interval_data, interval_labels, xlabel, ylabel, title, filename):
     plt.figure(figsize=(10, 6))
-    for quartile, label in zip(quartiles, quartile_labels):
-        values = quartile_data.get(quartile, [])
+    for interval, label in zip(interval_data.keys(), interval_labels):
+        values = interval_data.get(interval, [])
         if not values:
+            print(f"No data for {interval}; skipping CDF plot for this interval.")
             continue
         sorted_vals = np.sort(values)
         cdf = np.arange(1, len(sorted_vals)+1) / len(sorted_vals)
@@ -312,31 +338,102 @@ def plot_cdf_by_quartile(quartile_data, quartile_labels, xlabel, ylabel, title, 
     print(f"Plot '{filename}' saved successfully.")
 
 # Prepare data for plotting
-plot_data = {
-    'Q1': quartile_dict['Q1'],
-    'Q2': quartile_dict['Q2'],
-    'Q3': quartile_dict['Q3'],
-    'Q4': quartile_dict['Q4']
-}
+plot_data = interval_dict
+plot_labels = interval_range_labels
 
 # Plot CDF for gpu_request_tot
-plot_cdf_by_quartile(
-    quartile_data=plot_data,
-    quartile_labels=quartile_labels,
+plot_cdf_by_interval(
+    interval_data=plot_data,
+    interval_labels=plot_labels,
     xlabel='Total GPU Requested',
     ylabel='CDF',
-    title='CDF of Total GPU Requested by Quartiles',
-    filename=os.path.join(plots_directory, "gpu_request_tot_cdf_by_quartile.png")
+    title='CDF of Total GPU Requested by Intervals',
+    filename=os.path.join(plots_directory, f"gpu_request_tot_cdf_by_intervals_{num_intervals}.png")
 )
+
+# ------------------------------
+# 7.a. Plot Additional Metrics
+# ------------------------------
+
+# Convert master_metrics to DataFrame
+metrics_df = pd.DataFrame(master_metrics)
+
+# Merge interval information
+metrics_df = metrics_df.merge(
+    gpu_request_df[['Utility_Function', 'Replication', 'Interval']],
+    on=['Utility_Function', 'Replication'],
+    how='left'
+)
+
+# Set the theme for seaborn
+sns.set_theme(style="whitegrid")
+
+# List of metrics to plot
+metrics_to_plot = ['gpu_request_tot', 'jains_index', 'ginis_index', 'throughput', 'job_latency', 'queue_length', 'active_jobs']
+
+# Function to create boxplots for each metric
+def plot_boxplots(df, metric, plots_dir, interval_labels):
+    plt.figure(figsize=(12, 8))
+    sns.boxplot(x='Utility_Function', y=metric, hue='Interval', data=df, palette=palette)
+    plt.title(f'Boxplot of {metric.replace("_", " ").title()} by Utility Function and Interval')
+    plt.xlabel('Utility Function')
+    plt.ylabel(metric.replace("_", " ").title())
+    plt.legend(title='Interval')
+    plt.tight_layout()
+    filename = os.path.join(plots_dir, f"{metric}_boxplot_{num_intervals}_intervals.png")
+    plt.savefig(filename)
+    plt.close()
+    print(f"Boxplot for '{metric}' saved as '{filename}'.")
+
+# Function to create distribution plots (e.g., histograms) for each metric
+def plot_distributions(df, metric, plots_dir, interval_labels):
+    plt.figure(figsize=(10, 6))
+    try:
+        # Check if data has enough unique values for KDE
+        unique_values = df[metric].nunique()
+        if unique_values < 2:
+            raise ValueError("Not enough unique values for KDE.")
+
+        # Additionally, check if the data is not all identical
+        if df[metric].nunique() == 1:
+            raise ValueError("All data points have the same value; KDE cannot be computed.")
+
+        # Plot with KDE
+        sns.histplot(data=df, x=metric, hue='Interval', multiple='stack', palette=palette, kde=True)
+    except Exception as e:
+        print(f"Could not plot KDE for '{metric}': {e}")
+        # Plot without KDE
+        sns.histplot(data=df, x=metric, hue='Interval', multiple='stack', palette=palette, kde=False)
+
+    plt.title(f'Distribution of {metric.replace("_", " ").title()} by Interval')
+    plt.xlabel(metric.replace("_", " ").title())
+    plt.ylabel('Count')
+    plt.tight_layout()
+    filename = os.path.join(plots_dir, f"{metric}_distribution_{num_intervals}_intervals.png")
+    plt.savefig(filename)
+    plt.close()
+    print(f"Distribution plot for '{metric}' saved as '{filename}'.")
+
+# Suppress warnings for cleaner output
+warnings.filterwarnings("ignore", category=UserWarning, module="seaborn")
+
+# Plot each metric
+for metric in metrics_to_plot:
+    plot_boxplots(metrics_df, metric, plots_directory, interval_range_labels)
+    plot_distributions(metrics_df, metric, plots_directory, interval_range_labels)
 
 # ------------------------------
 # 8. Save the Aggregated Metrics
 # ------------------------------
 
-# Merge quartile information back to master_metrics if needed
+# Merge interval range information back to master_metrics if needed
 # This step is optional and depends on how you want to use master_metrics
 master_metrics_df = pd.DataFrame(master_metrics)
-master_metrics_df = master_metrics_df.merge(gpu_request_df[['Utility_Function', 'Replication', 'Quartile_Range']], on=['Utility_Function', 'Replication'], how='left')
+master_metrics_df = master_metrics_df.merge(
+    gpu_request_df[['Utility_Function', 'Replication', 'Interval_Range']],
+    on=['Utility_Function', 'Replication'],
+    how='left'
+)
 
 # Save the aggregated metrics to a CSV file
 master_csv_path = os.path.join(plots_directory, 'aggregated_metrics.csv')
@@ -347,11 +444,11 @@ print(f"Aggregated metrics saved to '{master_csv_path}'.")
 # 9. Summary of Results
 # ------------------------------
 
-# Display the gpu_request_tot with quartiles
-print("\nTotal GPU Requests per File with Quartiles:")
+# Display the gpu_request_tot with intervals
+print("\nTotal GPU Requests per File with Intervals:")
 print(gpu_request_df)
 
 # Save the gpu_request_df to a CSV file
-gpu_request_csv_path = os.path.join(plots_directory, 'gpu_request_tot_quartiles.csv')
+gpu_request_csv_path = os.path.join(plots_directory, f'gpu_request_tot_intervals_{num_intervals}.csv')
 gpu_request_df.to_csv(gpu_request_csv_path, index=False)
-print(f"GPU request totals with quartiles saved to '{gpu_request_csv_path}'.")
+print(f"GPU request totals with intervals saved to '{gpu_request_csv_path}'.")

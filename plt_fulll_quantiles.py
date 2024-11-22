@@ -189,9 +189,10 @@ def plot_confidence_intervals_by_utility(csv_file, label, confidence=0.95, t_gpu
         else:
             t_gpu_range_label = "all"
 
-        output_filename = f"{csv_file}_{col}_{t_gpu_range_label}_{label}.tex"
+        output_filename = f"{csv_file}_{col}_{t_gpu_range_label}_{label}"
         output_path = os.path.join(output_dir, output_filename)
-        tikzplotlib.save(output_path)
+        plt.savefig(output_path+'.png')
+        # tikzplotlib.save(output_path+'.tex')
         plt.close()
         print(f"Confidence interval plot for '{col}' saved to '{output_path}'.")
 
@@ -325,9 +326,10 @@ def plot_cdf_by_utility(csv_file, label, t_gpu_min=None, t_gpu_max=None,
         else:
             t_gpu_range_label = "all"
 
-        output_filename = f"{csv_file}_{col}_CDF_{t_gpu_range_label}_{label}.tex"
+        output_filename = f"{csv_file}_{col}_CDF_{t_gpu_range_label}_{label}"
         output_path = os.path.join(output_dir, output_filename)
-        tikzplotlib.save(output_path)
+        plt.savefig(output_path+'.png')
+        # tikzplotlib.save(output_path+'.tex')
         plt.close()
         print(f"CDF plot for '{col}' saved to '{output_path}'.")
 
@@ -343,8 +345,8 @@ if __name__ == "__main__":
 
     # Define manual t_gpu intervals if USE_MANUAL_INTERVALS is True
     MANUAL_T_GPU_INTERVALS = [
-        (0, 600),
-        (600, 1000)
+        (0,700),
+        (700, 2000)
     ]
 
     # Variable to set the number of intervals for percentile-based computation
@@ -389,7 +391,7 @@ if __name__ == "__main__":
                 print("Error: CSV file is malformed.")
                 t_gpu_intervals.append([])
                 continue
-
+            csv_file = csv_file[csv_file['execution']<40]
             # Check if 't_gpu' column exists
             if 't_gpu' not in df_main.columns:
                 print(f"Error: 't_gpu' column not found in '{csv_file}.csv'.")
