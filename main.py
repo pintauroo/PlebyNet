@@ -180,9 +180,9 @@ def run_simulation(rep: str, config: dict, dataset: pd.DataFrame, utility: Utili
 
 def main(rep: str):
     # config_file = 'config_100_100n_100bw.yaml'
-    # config_file = 'config_200_100n_25bw.yaml'
+    config_file = 'config_200_100n_25bw.yaml'
     # config_file = 'config_300_50n_100bw.yaml'
-    config_file = 'config_400_50n_25bw.yaml'
+    # config_file = 'config_400_50n_25bw.yaml'
     config = load_config(config_file)
 
     # Define all required top-level configuration keys
@@ -224,6 +224,7 @@ def main(rep: str):
     random_state = int(time.time())
     dataset_plebi = df_dataset_full.sample(n=NUM_JOBS, random_state=random_state)
     dataset_plebi = poisson_arrivals(dataset_plebi, total_time=500, total_jobs=NUM_JOBS)
+
     logging.info("Dataset initialized and loaded.")
 
     # Simulation Parameters from config

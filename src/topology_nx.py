@@ -1,8 +1,6 @@
 import networkx as nx
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import logging
 
 # Suppress matplotlib logging
@@ -14,11 +12,9 @@ class BaseTopology:
         self.allocated_paths = {}  # key: job_id, value: dict of allocations
         self.utilization_records = []
         self.allocation_step = 0
+        self.adj = None  # Initialize adjacency matrix
 
     def create_topology(self):
-        """
-        Abstract method to create a topology. Must be implemented by subclasses.
-        """
         raise NotImplementedError("Subclasses must implement this method")
 
     def calculate_host_to_host_adjacency_matrix(self):
@@ -34,53 +30,47 @@ class BaseTopology:
                     continue
 
                 try:
-                    paths = list(nx.all_shortest_paths(self.G, source=src, target=dst))
-                    max_min_bw = 0
+                    path = nx.shortest_path(self.G, source=src, target=dst)
+                    min_available_bw = float('inf')
 
-                    for path in paths:
-                        min_available_bw = float('inf')
-                        valid_path = True
+                    for k in range(len(path) - 1):
+                        u, v = path[k], path[k + 1]
 
-                        for k in range(len(path) - 1):
-                            u, v = path[k], path[k + 1]
-                            edge_data = self.G.get_edge_data(u, v)
+                        # Edge data
+                        edge_data = self.G.get_edge_data(u, v)
+                        bandwidth = edge_data.get('bandwidth', 0.0)
+                        reserved_bw = edge_data.get('reserved_bw', 0.0)
+                        available_bw_edge = max(float(bandwidth) - float(reserved_bw), 0.0)
 
-                            if edge_data is None:
-                                valid_path = False
-                                break
+                        # Node data for u
+                        if self.G.nodes[u]['type'] != 'host':
+                            node_bandwidth = self.G.nodes[u].get('bandwidth', float('inf'))
+                            node_reserved_bw = self.G.nodes[u].get('reserved_bw', 0.0)
+                            available_bw_node_u = max(float(node_bandwidth) - float(node_reserved_bw), 0.0)
+                        else:
+                            available_bw_node_u = float('inf')
 
-                            bandwidth = edge_data.get('bandwidth')
-                            reserved_bw = edge_data.get('reserved_bw')
+                        # Node data for v
+                        if self.G.nodes[v]['type'] != 'host':
+                            node_bandwidth = self.G.nodes[v].get('bandwidth', float('inf'))
+                            node_reserved_bw = self.G.nodes[v].get('reserved_bw', 0.0)
+                            available_bw_node_v = max(float(node_bandwidth) - float(node_reserved_bw), 0.0)
+                        else:
+                            available_bw_node_v = float('inf')
 
-                            if bandwidth is None or reserved_bw is None:
-                                valid_path = False
-                                break
+                        # The available bandwidth on this segment
+                        available_bw = min(available_bw_edge, available_bw_node_u, available_bw_node_v)
+                        min_available_bw = min(min_available_bw, available_bw)
 
-                            available_bw_edge = max(bandwidth - reserved_bw, 0)
-                            node_v_data = self.G.nodes[v]
-                            if node_v_data.get('type') != 'host':
-                                node_bandwidth = node_v_data.get('bandwidth', float('inf'))
-                                node_reserved_bw = node_v_data.get('reserved_bw', 0)
-                                available_bw_node = max(node_bandwidth - node_reserved_bw, 0)
-                            else:
-                                available_bw_node = float('inf')
-
-                            available_bw = min(available_bw_edge, available_bw_node)
-                            min_available_bw = min(min_available_bw, available_bw)
-
-                        if valid_path:
-                            max_min_bw = max(max_min_bw, min_available_bw)
-
-                    adj_matrix[i][j] = max_min_bw
+                    adj_matrix[i][j] = min_available_bw
 
                 except nx.NetworkXNoPath:
-                    adj_matrix[i][j] = 0
+                    adj_matrix[i][j] = 0.0
 
         return adj_matrix
 
     def record_utilization(self, time_instant, job_id):
-        record = {'allocation_step': time_instant,
-                  'job_id': job_id}
+        record = {'allocation_step': time_instant, 'job_id': job_id}
 
         for node, data in self.G.nodes(data=True):
             if data['type'] in ['spine', 'leaf', 'host']:
@@ -105,172 +95,35 @@ class BaseTopology:
             filename += '.csv'
         df = pd.DataFrame(self.utilization_records)
         df.to_csv(filename, index=False)
-        # print(f"Utilization statistics saved to {filename}")
 
-    def get_utilization_percentage(self):
-        """
-        Calculate the utilization percentage for each node and edge in the network,
-        generate visualizations, and save them as image files.
+    def allocate_bandwidth_between_workers_and_ps(self, allocation_list, total_required_bw, job_id, time_instant, allow_oversubscription=False):
+        if not allocation_list:
+            return 0.0
 
-        Returns:
-            dict: A dictionary containing two dictionaries:
-                  - 'nodes': Utilization percentages for each node.
-                  - 'edges': Utilization percentages for each edge.
-        """
-        # --------------------------
-        # 1. Calculate Node Utilization
-        # --------------------------
-        node_utilization = {}
-        for node, data in self.G.nodes(data=True):
-            bandwidth = data.get('bandwidth', 0)
-            reserved_bw = data.get('reserved_bw', 0)
-            if bandwidth > 0:
-                utilization = (reserved_bw / bandwidth) * 100
-            else:
-                utilization = 0
-            node_utilization[node] = float(round(utilization, 2))  # Ensure Python float
+        ps_nodes = set(allocation_list)
+        num_ps_nodes = len(ps_nodes)
+        required_per_connection = float(total_required_bw) / num_ps_nodes  # Distribute total BW equally among PS nodes
 
-        # --------------------------
-        # 2. Calculate Edge Utilization
-        # --------------------------
-        edge_utilization = {}
-        for u, v, data in self.G.edges(data=True):
-            bandwidth = data.get('bandwidth', 0)
-            reserved_bw = data.get('reserved_bw', 0)
-            if bandwidth > 0:
-                utilization = (reserved_bw / bandwidth) * 100
-            else:
-                utilization = 0
-            # Convert tuple to string for easier plotting
-            edge_str = f"{u}-{v}"
-            edge_utilization[edge_str] = float(round(utilization, 2))  # Ensure Python float
-
-        # --------------------------
-        # 3. Compile Utilization Data
-        # --------------------------
-        utilization = {'nodes': node_utilization, 'edges': edge_utilization}
-
-        # --------------------------
-        # 4. Convert Edge Utilization to DataFrame
-        # --------------------------
-        edges_df = pd.DataFrame(list(edge_utilization.items()), columns=['Edge', 'Utilization (%)'])
-
-        # Split 'Edge' into 'Source' and 'Destination'
-        edges_df[['Source', 'Destination']] = edges_df['Edge'].str.split('-', expand=True)
-
-        # --------------------------
-        # 5. Pivot Data for Heatmap
-        # --------------------------
-        try:
-            heatmap_data = edges_df.pivot(index="Source", columns="Destination", values="Utilization (%)")
-        except ValueError as e:
-            # print(f"Error during pivot operation: {e}")
-            # print("Inspecting the 'edges_df' DataFrame:")
-            # print(edges_df.head())
-            raise
-
-        # --------------------------
-        # 6. Visualization: Edge Utilization Heatmap
-        # --------------------------
-        plt.figure(figsize=(12, 8))
-        sns.heatmap(heatmap_data, annot=True, fmt=".2f", cmap="YlGnBu", linewidths=.5)
-        plt.title('Edge Utilization Heatmap')
-        plt.xlabel('Destination Node')
-        plt.ylabel('Source Node')
-        plt.tight_layout()
-        plt.savefig('BWUTIL_heatmap.png')
-        plt.close()
-
-        # --------------------------
-        # 7. Visualization: Node Utilization Bar Chart
-        # --------------------------
-        nodes_df = pd.DataFrame(list(node_utilization.items()), columns=['Node', 'Utilization (%)'])
-
-        plt.figure(figsize=(14, 7))
-        sns.barplot(x='Node', y='Utilization (%)', data=nodes_df)
-        plt.title('Node Utilization Percentage')
-        plt.xlabel('Node')
-        plt.ylabel('Utilization (%)')
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        plt.savefig('Node_Utilization_BarChart.png')
-        plt.close()
-
-        # --------------------------
-        # 8. Visualization: Edge Utilization Bar Chart
-        # --------------------------
-        plt.figure(figsize=(14, 7))
-        sns.barplot(x='Edge', y='Utilization (%)', data=edges_df)
-        plt.title('Edge Utilization Percentage')
-        plt.xlabel('Edge')
-        plt.ylabel('Utilization (%)')
-        plt.xticks(rotation=90)
-        plt.tight_layout()
-        plt.savefig('Edge_Utilization_BarChart.png')
-        plt.close()
-
-        # --------------------------
-        # 9. Visualization: Sorted Node Utilization Bar Chart
-        # --------------------------
-        sorted_nodes_df = nodes_df.sort_values(by='Utilization (%)', ascending=False)
-
-        plt.figure(figsize=(14, 7))
-        sns.barplot(x='Node', y='Utilization (%)', data=sorted_nodes_df)
-        plt.title('Sorted Node Utilization Percentage')
-        plt.xlabel('Node')
-        plt.ylabel('Utilization (%)')
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        plt.savefig('Sorted_Node_Utilization_BarChart.png')
-        plt.close()
-
-        # --------------------------
-        # 10. Visualization: Sorted Edge Utilization Bar Chart
-        # --------------------------
-        sorted_edges_df = edges_df.sort_values(by='Utilization (%)', ascending=False)
-
-        plt.figure(figsize=(14, 7))
-        sns.barplot(x='Edge', y='Utilization (%)', data=sorted_edges_df)
-        plt.title('Sorted Edge Utilization Percentage')
-        plt.xlabel('Edge')
-        plt.ylabel('Utilization (%)')
-        plt.xticks(rotation=90)
-        plt.tight_layout()
-        plt.savefig('Sorted_Edge_Utilization_BarChart.png')
-        plt.close()
-
-        return utilization
-
-    def allocate_ps_to_workers_balanced(self, worker_nodes, required_bw, job_id, time_instant, allow_oversubscription=False):
-        # Format worker node IDs
-        worker_nodes_formatted = self.format_node_ids(worker_nodes)
-        if not worker_nodes_formatted:
-            # print("No worker nodes provided for allocation.")
-            return 0
-
-        # Identify Spine Nodes (PS Nodes)
-        ps_nodes_formatted = [node for node, data in self.G.nodes(data=True) if data['type'] == 'spine']
-        if not ps_nodes_formatted:
-            # print("No spine nodes available for allocation.")
-            return 0
-
+        # Prepare to allocate bandwidth
+        modifications = []
         paths = {}
         edge_usage_count = {}
         node_usage_count = {}
-        modifications = []
 
-        # Collect all paths and usage counts
-        for worker in worker_nodes_formatted:
-            for ps in ps_nodes_formatted:
-                if ps == worker:
-                    continue 
+        # For each worker-PS pair, allocate bandwidth
+        for worker_id in allocation_list:
+            worker = self.format_node_id(worker_id)
+            for ps_id in ps_nodes:
+                ps = self.format_node_id(ps_id)
+
+                if worker == ps:
+                    # No network bandwidth is consumed if worker and PS are on the same host
+                    continue
+
                 try:
-                    path = nx.shortest_path(self.G, source=ps, target=worker)
-                    key = (ps, worker)
-                    if key not in paths:
-                        paths[key] = {'path': path, 'count': 1}
-                    else:
-                        paths[key]['count'] += 1
+                    path = nx.shortest_path(self.G, source=worker, target=ps)
+                    key = (worker, ps)
+                    paths[key] = path
 
                     # Update node usage counts
                     for node in path:
@@ -280,47 +133,45 @@ class BaseTopology:
                     # Update edge usage counts
                     for i in range(len(path) - 1):
                         u, v = path[i], path[i + 1]
-                        edge = (u, v) if (u, v) in self.G.edges else (v, u)
+                        edge = (u, v) if self.G.has_edge(u, v) else (v, u)
                         edge_usage_count[edge] = edge_usage_count.get(edge, 0) + 1
 
                 except nx.NetworkXNoPath:
-                    # print(f"No path found between PS {ps} and worker {worker}.")
-                    return 0
+                    print(f"No path found between worker {worker} and PS {ps}.")
+                    return 0.0
 
         # Compute the maximum per-connection bandwidth
         max_bw_per_connection = float('inf')
 
         for node, usage in node_usage_count.items():
-            available_bw = self.G.nodes[node]['bandwidth'] - self.G.nodes[node]['reserved_bw']
+            available_bw = float(self.G.nodes[node]['bandwidth']) - float(self.G.nodes[node]['reserved_bw'])
             per_connection_bw = available_bw / usage
             if per_connection_bw < max_bw_per_connection:
                 max_bw_per_connection = per_connection_bw
 
         for edge, usage in edge_usage_count.items():
             u, v = edge
-            available_bw = self.G[u][v]['bandwidth'] - self.G[u][v]['reserved_bw']
+            available_bw = float(self.G[u][v]['bandwidth']) - float(self.G[u][v]['reserved_bw'])
             per_connection_bw = available_bw / usage
             if per_connection_bw < max_bw_per_connection:
                 max_bw_per_connection = per_connection_bw
 
-        # Limit by required_bw if specified
-        max_bw_per_connection = min(max_bw_per_connection, required_bw)
+        # Limit allocated bandwidth per connection to the required per connection
+        allocated_per_connection_bw = min(max_bw_per_connection, required_per_connection)
 
-        if max_bw_per_connection <= 1e-6:
+        if allocated_per_connection_bw <= 0.0:
             # print("No bandwidth available for allocation.")
-            return 0
+            return 0.0
 
-        # Proceed to allocate max_bw_per_connection to each path
+        # Proceed to allocate bandwidth
         try:
-            for (ps, worker), path_info in paths.items():
-                path = path_info['path']
-                count = path_info['count']
-                total_bw = max_bw_per_connection * count
+            for (worker, ps), path in paths.items():
+                total_bw = allocated_per_connection_bw
 
                 for node in path:
                     if self.G.nodes[node]['type'] in ['spine', 'leaf']:
-                        new_reserved_bw = self.G.nodes[node]['reserved_bw'] + total_bw
-                        if new_reserved_bw > self.G.nodes[node]['bandwidth']:
+                        new_reserved_bw = float(self.G.nodes[node]['reserved_bw']) + total_bw
+                        if new_reserved_bw > float(self.G.nodes[node]['bandwidth']):
                             if not allow_oversubscription:
                                 raise Exception(f"Not enough bandwidth on node {node} during allocation.")
                         old_reserved_bw = self.G.nodes[node]['reserved_bw']
@@ -329,8 +180,8 @@ class BaseTopology:
 
                 for i in range(len(path) - 1):
                     u, v = path[i], path[i + 1]
-                    new_reserved_bw = self.G[u][v]['reserved_bw'] + total_bw
-                    if new_reserved_bw > self.G[u][v]['bandwidth']:
+                    new_reserved_bw = float(self.G[u][v]['reserved_bw']) + total_bw
+                    if new_reserved_bw > float(self.G[u][v]['bandwidth']):
                         if not allow_oversubscription:
                             raise Exception(f"Not enough bandwidth on link {u}-{v} during allocation.")
                     old_reserved_bw = self.G[u][v]['reserved_bw']
@@ -341,11 +192,13 @@ class BaseTopology:
             if job_id not in self.allocated_paths:
                 self.allocated_paths[job_id] = {}
 
-            for (ps, worker), path_info in paths.items():
-                self.allocated_paths[job_id][(ps, worker)] = (path_info['path'], max_bw_per_connection, path_info['count'])
+            for (worker, ps), path in paths.items():
+                self.allocated_paths[job_id][(worker, ps)] = (path, allocated_per_connection_bw)
 
             self.record_utilization(time_instant, job_id)
-            return max_bw_per_connection
+            # Recalculate the adjacency matrix
+            self.adj = self.calculate_host_to_host_adjacency_matrix()
+            return allocated_per_connection_bw
 
         except Exception as e:
             # print(f"Exception occurred during allocation: {e}")
@@ -356,12 +209,9 @@ class BaseTopology:
                 elif obj_type == 'edge':
                     u, v = obj_id
                     self.G[u][v][attr] = old_value
-            return 0
+            return 0.0
 
-    def deallocate_ps_to_workers_balanced(self, job_id, time_instant):
-        """
-        Deallocate resources for a job allocated using allocate_ps_to_workers_balanced.
-        """
+    def deallocate_bandwidth_between_workers_and_ps(self, job_id, time_instant):
         if job_id not in self.allocated_paths:
             # print(f"No allocations found for job_id {job_id}")
             return False
@@ -369,29 +219,31 @@ class BaseTopology:
         allocations = self.allocated_paths[job_id]
         modifications = []
         try:
-            for (ps, worker), (path, allocated_bw, count) in allocations.items():
-                total_bw = allocated_bw * count
+            for (worker, ps), (path, allocated_bw) in allocations.items():
+                total_bw = allocated_bw
 
                 for node in path:
                     if self.G.nodes[node]['type'] in ['spine', 'leaf']:
                         old_reserved_bw = self.G.nodes[node]['reserved_bw']
-                        new_reserved_bw = self.G.nodes[node]['reserved_bw'] - total_bw
-                        self.G.nodes[node]['reserved_bw'] = max(round(new_reserved_bw, 6), 0)
+                        new_reserved_bw = float(self.G.nodes[node]['reserved_bw']) - total_bw
+                        self.G.nodes[node]['reserved_bw'] = max(round(new_reserved_bw, 6), 0.0)
                         modifications.append(('node', node, 'reserved_bw', old_reserved_bw))
 
                 for i in range(len(path) - 1):
                     u, v = path[i], path[i + 1]
                     old_reserved_bw = self.G[u][v]['reserved_bw']
-                    new_reserved_bw = self.G[u][v]['reserved_bw'] - total_bw
-                    self.G[u][v]['reserved_bw'] = max(round(new_reserved_bw, 6), 0)
+                    new_reserved_bw = float(self.G[u][v]['reserved_bw']) - total_bw
+                    self.G[u][v]['reserved_bw'] = max(round(new_reserved_bw, 6), 0.0)
                     modifications.append(('edge', (u, v), 'reserved_bw', old_reserved_bw))
 
             # After successful deallocation, remove the job_id from allocated_paths
             del self.allocated_paths[job_id]
             self.record_utilization(time_instant, job_id)
+            # Recalculate the adjacency matrix
+            self.adj = self.calculate_host_to_host_adjacency_matrix()
             return True
         except Exception as e:
-            # print(f"Exception occurred during deallocation: {e}")
+            print(f"Exception occurred during deallocation: {e}")
             # In case of exception, roll back changes
             for obj_type, obj_id, attr, old_value in reversed(modifications):
                 if obj_type == 'node':
@@ -401,66 +253,13 @@ class BaseTopology:
                     self.G[u][v][attr] = old_value
             return False
 
+    def format_node_id(self, node_id):
+        return f"H{str(node_id)}"
+
     def format_node_ids(self, node_ids):
         if isinstance(node_ids, str):
             node_ids = [node_ids]
         return [f"H{str(node_id)}" for node_id in node_ids]
-
-    def compute_max_allocatable_bw(self, ps_node, worker_nodes, time_instant, max_bw=None, allow_oversubscription=False):
-        # Assuming ps_node is already formatted as 'S*'
-        worker_nodes_formatted = self.format_node_ids(worker_nodes)
-        ps_node_formatted = ps_node  # No formatting needed for spine nodes
-
-        paths = {}
-        edge_usage_count = {}
-        node_usage_count = {}
-        modifications = []
-
-        for worker in worker_nodes_formatted:
-            if ps_node_formatted == worker:
-                continue
-
-            try:
-                path = nx.shortest_path(self.G, source=ps_node_formatted, target=worker)
-                paths[worker] = path
-
-                for node in path:
-                    if self.G.nodes[node]['type'] in ['spine', 'leaf']:
-                        node_usage_count[node] = node_usage_count.get(node, 0) + 1
-
-                for i in range(len(path) - 1):
-                    u, v = path[i], path[i + 1]
-                    edge = (u, v) if (u, v) in self.G.edges else (v, u)
-                    edge_usage_count[edge] = edge_usage_count.get(edge, 0) + 1
-
-            except nx.NetworkXNoPath:
-                # print(f"No path found between PS {ps_node_formatted} and worker {worker}.")
-                return 0  # Allocation is impossible due to no path
-
-        # Compute the maximum per-worker bandwidth
-        max_bw_per_worker = float('inf')
-
-        for node, usage in node_usage_count.items():
-            available_bw = self.G.nodes[node]['bandwidth'] - self.G.nodes[node]['reserved_bw']
-            per_worker_bw = available_bw / usage
-            if per_worker_bw < max_bw_per_worker:
-                max_bw_per_worker = per_worker_bw
-
-        for edge, usage in edge_usage_count.items():
-            u, v = edge
-            available_bw = self.G[u][v]['bandwidth'] - self.G[u][v]['reserved_bw']
-            per_worker_bw = available_bw / usage
-            if per_worker_bw < max_bw_per_worker:
-                max_bw_per_worker = per_worker_bw
-
-        if max_bw is not None:
-            max_bw_per_worker = min(max_bw_per_worker, max_bw)
-
-        if max_bw_per_worker <= 0:
-            # print("No bandwidth available for allocation.")
-            return 0
-
-        return max_bw_per_worker
 
 class SpineLeafTopology(BaseTopology):
     def __init__(self, num_spine, num_leaf, num_hosts_per_leaf, spine_bw, leaf_bw, link_bw_leaf_to_node, link_bw_leaf_to_spine):
@@ -475,87 +274,47 @@ class SpineLeafTopology(BaseTopology):
 
         spine_switches = [f"S{i}" for i in range(num_spine)]
         for spine in spine_switches:
-            G.add_node(spine, type='spine', bandwidth=spine_bw, reserved_bw=0)
+            G.add_node(spine, type='spine', bandwidth=float(spine_bw), reserved_bw=0.0)
 
         leaf_switches = [f"L{i}" for i in range(num_leaf)]
         for leaf in leaf_switches:
-            G.add_node(leaf, type='leaf', bandwidth=leaf_bw, reserved_bw=0)
+            G.add_node(leaf, type='leaf', bandwidth=float(leaf_bw), reserved_bw=0.0)
 
         for leaf in leaf_switches:
             for spine in spine_switches:
-                G.add_edge(leaf, spine, bandwidth=link_bw_leaf_to_spine, reserved_bw=0)
+                G.add_edge(leaf, spine, bandwidth=float(link_bw_leaf_to_spine), reserved_bw=0.0)
 
         host_id = 0
         for leaf in leaf_switches:
             for _ in range(num_hosts_per_leaf):
                 host = f"H{host_id}"
-                G.add_node(host, type='host', bandwidth=link_bw_leaf_to_node, reserved_bw=0)
-                G.add_edge(leaf, host, bandwidth=link_bw_leaf_to_node, reserved_bw=0)
+                G.add_node(host, type='host', bandwidth=float(link_bw_leaf_to_node), reserved_bw=0.0)
+                G.add_edge(leaf, host, bandwidth=float(link_bw_leaf_to_node), reserved_bw=0.0)
                 host_id += 1
 
         return G
 
     def verify_network_state(self):
-        """
-        Verify that the network's reserved bandwidths are back to their original state.
-        """
         epsilon = 1e-6  # Tolerance level for floating-point comparison
         # Check nodes
         for node, data in self.G.nodes(data=True):
-            original_bw = self.original_reserved_bw_nodes.get(node, 0)
+            original_bw = self.original_reserved_bw_nodes.get(node, 0.0)
             current_bw = data['reserved_bw']
             if abs(original_bw - current_bw) > epsilon:
-                # print(f"Node {node} reserved_bw mismatch. Original: {original_bw}, Current: {current_bw}")
+                print(f"Node {node} reserved_bw mismatch. Original: {original_bw}, Current: {current_bw}")
                 return False
 
         # Check edges
         for u, v, data in self.G.edges(data=True):
             edge = (u, v)
-            original_bw = self.original_reserved_bw_edges.get(edge, 0)
+            original_bw = self.original_reserved_bw_edges.get(edge, 0.0)
             current_bw = data['reserved_bw']
             if abs(original_bw - current_bw) > epsilon:
-                # print(f"Edge {u}-{v} reserved_bw mismatch. Original: {original_bw}, Current: {current_bw}")
+                print(f"Edge {u}-{v} reserved_bw mismatch. Original: {original_bw}, Current: {current_bw}")
                 return False
 
         # print("Network state verification passed. The network is back to its original state.")
         return True
-
-    def allocate_job_max_bandwidth(self, allocation_list, total_required_bw, job_id, time_instant, allow_oversubscription=False):
-        """
-        Allocate the maximum possible bandwidth for a job up to the required total bandwidth.
-
-        Parameters:
-            allocation_list (list): List of worker node IDs (integers) to which bandwidth is to be allocated.
-            total_required_bw (float): Total bandwidth required for the job.
-            job_id (int): Unique identifier for the job.
-            allow_oversubscription (bool): Whether to allow oversubscription of node capacities.
-
-        Returns:
-            tuple:
-                allocated_per_connection_bw (float): Bandwidth allocated per connection.
-                total_allocated_bw (float): Total bandwidth allocated for the job.
-        """
-        num_connections = len(allocation_list)
-        if num_connections == 0:
-            # print("Allocation list is empty.")
-            return 0, 0
-
-        # Corrected calculation: divide by total number of allocations, including duplicates
-        required_per_connection = total_required_bw / num_connections
-
-        # Allocate using the existing balanced allocation function
-        allocated_per_connection_bw = self.allocate_ps_to_workers_balanced(
-            allocation_list, required_per_connection, job_id, time_instant, allow_oversubscription=allow_oversubscription
-        )
-
-        total_allocated_bw = allocated_per_connection_bw * num_connections
-        # print(f"Allocated bandwidth per connection: {allocated_per_connection_bw}")
-        # print(f"Total allocated bandwidth: {total_allocated_bw}")
-
-        # if total_allocated_bw < total_required_bw:
-            # print(f"Warning: Only {total_allocated_bw} out of {total_required_bw} bandwidth could be allocated.")
-
-        return allocated_per_connection_bw, total_allocated_bw
 
 # Example usage
 if __name__ == "__main__":
@@ -574,38 +333,31 @@ if __name__ == "__main__":
         spine_bandwidth, leaf_bandwidth, link_bw_leaf_to_node, link_bw_leaf_to_spine
     )
 
-    # Define the job allocation
-    allocation_list = [3, 3, 4, 4, 5, 5, 6, 6, 7, 7]
-    # This corresponds to hosts H3, H3, H4, H4, H5, H5, H6, H6, H7, H7
-    total_bw = 35  # Total bandwidth required
+    # First test case
+    allocation_list = [i for i in range(1, 11)]  # Workers 0-9 assigned to PS nodes 1-10
+    total_bw = 100  # Total bandwidth required
     job_id = 1
 
     # Define time instants
     time_instant_allocation = 0
     time_instant_deallocation = 1
 
+    print("Adjacency Matrix Before Allocation:")
+    print(topology.adj)
+
     # Allocate resources for the job
-    allocated_per_conn, total_allocated = topology.allocate_job_max_bandwidth(
+    allocated_per_conn = topology.allocate_bandwidth_between_workers_and_ps(
         allocation_list, total_bw, job_id, time_instant=time_instant_allocation, allow_oversubscription=False
     )
     print(f"Allocation success for job {job_id}: {allocated_per_conn > 0}")
     print(f"Allocated bandwidth per connection for job {job_id}: {allocated_per_conn}")
-    print(f"Total allocated bandwidth for job {job_id}: {total_allocated}")
 
-    # Display current allocated paths
-    print(f"Current allocated paths: {topology.allocated_paths}")
-
-    # Save utilization statistics after allocation
-    topology.save_stats_to_csv('topology_utilization_after_allocation.csv')
-    print("Saved utilization statistics after allocation.")
+    print("Adjacency Matrix After Allocation:")
+    print(topology.adj)
 
     # Deallocate resources for the job
-    deallocation_success = topology.deallocate_ps_to_workers_balanced(job_id, time_instant_deallocation)
+    deallocation_success = topology.deallocate_bandwidth_between_workers_and_ps(job_id, time_instant_deallocation)
     print(f"Deallocation success for job {job_id}: {deallocation_success}")
-
-    # Save utilization statistics after deallocation
-    topology.save_stats_to_csv('topology_utilization_after_deallocation.csv')
-    print("Saved utilization statistics after deallocation.")
 
     # Verify that the network is back to its original state
     network_state_ok = topology.verify_network_state()

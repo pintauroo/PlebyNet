@@ -275,7 +275,7 @@ class Simulator_Plebiscito:
                         # self.topology.deallocate_ps_from_workers(allocations, int(self.nodes[0].bids[j['job_id']]['read_count']))
                         self.topology.deallocate_ps_from_workers(j['job_id'], time_instant)
                     else:
-                        self.topology.deallocate_ps_to_workers_balanced(j['job_id'], time_instant)
+                        self.topology.deallocate_bandwidth_between_workers_and_ps(j['job_id'], time_instant)
                     self.topology.save_stats_to_csv(self.filename+'_topo')
                     
                         
@@ -445,7 +445,7 @@ class Simulator_Plebiscito:
                                 running_jobs.at[index, 'current_duration'] += 1
                         # if rj['current_duration'] > rj['duration'] * 3:
                         # if time_instant - (rj['exec_time'] -rj['submit_time']) > rj['duration'] * 10:
-                        if time_instant - rj['exec_time'] > rj['duration'] * 10:
+                        if time_instant - rj['exec_time'] > rj['duration'] * rj['num_pod']:
                             logger.info(f"Terminated long job: {job_id}")
 
                             stopped_j, running_jobs = job.stop_job(running_jobs, time_instant, job_id)
@@ -687,7 +687,7 @@ class Simulator_Plebiscito:
                                             job_id=job_id,
                                             time_instant=time_instant)
                                     else:
-                                        allocated_bw, total_allocated = self.topology.allocate_job_max_bandwidth(
+                                        allocated_bw = self.topology.allocate_bandwidth_between_workers_and_ps(
                                             allocation_list=allocations,
                                             total_required_bw=job_speedup[job_id]['read_count'],
                                             job_id=job_id, 
@@ -702,7 +702,7 @@ class Simulator_Plebiscito:
                                     # Logic to try allocation with lower bw
                                     if allocated_bw > 0:
 
-                                        job_speedup[job_id]['alloc_bw'] = int(allocated_bw)
+                                        job_speedup[job_id]['alloc_bw'] = allocated_bw
                                         logger.debug(f"[SIM] [ALLOCATED BW] Job: {job_id}, {allocations}, BW:{job_speedup[job_id]['read_count']}/{job_speedup[job_id]['alloc_bw']}")
 
                                         self.topology.save_stats_to_csv(self.filename+'_topo')

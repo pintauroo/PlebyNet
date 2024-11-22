@@ -218,8 +218,8 @@ def init_go_(num_jobs, filename, seed, fix_duration):
     jobs.rename(columns={'plan_gpu': 'num_gpu'}, inplace=True)
     # jobs = jobs[jobs['gpu_type'] == 'P100']
     
-    jobs['write_count'] = jobs['write_count'].astype(float).round(2)  # Truncates decimals
-    jobs['read_count'] = jobs['read_count'].astype(float).round(2)    # Truncates decimals
+    # jobs['write_count'] = jobs['write_count'].astype(float).round(2)  # Truncates decimals
+    # jobs['read_count'] = jobs['read_count'].astype(float).round(2)    # Truncates decimals
     # jobs = jobs[jobs['read_count'] * jobs['num_pod'] <= 100]
     # jobs = jobs[jobs['read_count'] > 5]
     # jobs = jobs[jobs['write_count'] > 5]
@@ -279,8 +279,8 @@ def init_go_(num_jobs, filename, seed, fix_duration):
         job_dict["max_pod"] = job_dict['num_pod']
         # job_dict["write_count"] = job_dict["read_count"] = int(random.randint(10, int(100/job_dict['num_pod'])))
         # job_dict["write_count"] = job_dict["read_count"] = max(job_dict["write_count"],job_dict["read_count"])
-        job_dict["read_count"] =  int(job_dict["read_count"])
-        job_dict["write_count"] = int(job_dict["write_count"])
+        job_dict["read_count"] =  int(job_dict["read_count"] *100)
+        job_dict["write_count"] = int(job_dict["write_count"]*100)
         # job_dict["read_count"] =  int(1000)
         # job_dict["write_count"] = int(1000)
         # job_dict['num_gpu'] = int(800)
