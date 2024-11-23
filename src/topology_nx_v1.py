@@ -123,6 +123,7 @@ class BaseTopology:
         # Remove allocations for this job_id
         del self.allocated_paths[job_id]
         self.record_utilization(time_instant,job_id)
+        self.adj = self.calculate_host_to_host_adjacency_matrix()
         return True
 
     def format_node_ids(self, node_ids):
@@ -218,6 +219,9 @@ class BaseTopology:
                         continue
                     path = paths[worker]
                     self.allocated_paths[job_id].append((ps_node, worker, path, max_bw_per_worker))
+                
+                self.adj = self.calculate_host_to_host_adjacency_matrix()
+                    
 
                 self.record_utilization(time_instant,job_id)
 

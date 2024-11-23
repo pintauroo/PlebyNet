@@ -3,8 +3,9 @@ import pandas as pd
 import os
 import time
 from pathlib import Path
-import yaml  # Ensure PyYAML is installed
+import yaml
 import logging
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from src.simulator import Simulator_Plebiscito
 from src.config import DebugLevel, SchedulingAlgorithm, Utility
@@ -16,15 +17,6 @@ from src.topology_nx_v1 import SpineLeafTopology as SpineLeafTopology_sps
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def load_config(config_path: str) -> dict:
-    """
-    Load the YAML configuration file.
-
-    Args:
-        config_path (str): Path to the YAML config file.
-
-    Returns:
-        dict: Configuration parameters.
-    """
     try:
         with open(config_path, 'r') as file:
             config = yaml.safe_load(file)
@@ -38,21 +30,10 @@ def load_config(config_path: str) -> dict:
         sys.exit(1)
 
 def validate_config(config: dict, required_keys: list):
-    """
-    Validate that all required keys are present in the configuration.
-
-    Args:
-        config (dict): The configuration dictionary.
-        required_keys (list): List of keys that must be present.
-
-    Raises:
-        KeyError: If any required key is missing.
-    """
     missing_keys = [key for key in required_keys if key not in config]
     if missing_keys:
         raise KeyError(f"Missing configuration parameters: {', '.join(missing_keys)}")
 
-    # Validate topology configurations
     if 'LeafSpine' not in config:
         raise KeyError("Missing 'LeafSpine' topology configuration.")
 
@@ -71,7 +52,6 @@ def validate_config(config: dict, required_keys: list):
     if missing_leaf_spine_keys:
         raise KeyError(f"Missing LeafSpine configuration parameters: {', '.join(missing_leaf_spine_keys)}")
 
-    # Validate nested infinite_bw configurations
     infinite_bw = leaf_spine_config.get('infinite_bw', {})
     required_bw_keys = [
         'max_spine_capacity',
@@ -84,16 +64,6 @@ def validate_config(config: dict, required_keys: list):
         raise KeyError(f"Missing infinite_bw parameters in LeafSpine: {', '.join(missing_bw_keys)}")
 
 def get_bandwidth_config(leaf_spine_config: dict, with_bw: bool) -> dict:
-    """
-    Select the bandwidth configuration based on with_bw flag.
-
-    Args:
-        leaf_spine_config (dict): LeafSpine topology configuration.
-        with_bw (bool): Flag indicating whether to use limited bandwidth.
-
-    Returns:
-        dict: Selected bandwidth configuration.
-    """
     if with_bw:
         bw_config = {
             'max_spine_capacity': leaf_spine_config['max_spine_capacity'],
@@ -113,21 +83,8 @@ def get_bandwidth_config(leaf_spine_config: dict, with_bw: bool) -> dict:
     return bw_config
 
 def create_topology(leaf_spine_config: dict, singleps: bool, with_bw: bool):
-    """
-    Initialize the topology based on the configuration.
-
-    Args:
-        leaf_spine_config (dict): LeafSpine topology configuration.
-        singleps (bool): Flag for single spine leaf topology.
-        with_bw (bool): Flag indicating whether to apply bandwidth constraints.
-
-    Returns:
-        SpineLeafTopology: Initialized topology object.
-    """
     bw_config = get_bandwidth_config(leaf_spine_config, with_bw)
-
     topology_cls = SpineLeafTopology_sps if singleps else SpineLeafTopology_mps
-
     topology = topology_cls(
         num_spine=leaf_spine_config['num_spine_switches'],
         num_leaf=leaf_spine_config['num_leaf_switches'],
@@ -140,27 +97,27 @@ def create_topology(leaf_spine_config: dict, singleps: bool, with_bw: bool):
     logging.debug(f"Topology created with {'SPS' if singleps else 'MPS'} and {'with BW' if with_bw else 'without BW'}")
     return topology
 
-def run_simulation(rep: str, config: dict, dataset: pd.DataFrame, utility: Utility, 
-                  scheduling_algorithm: SchedulingAlgorithm, singleps: bool, with_bw: bool):
+def run_simulation(args):
     """
-    Configure and run a single simulation.
-
+    Wrapper function to run a single simulation. This function is necessary
+    because ProcessPoolExecutor can only map functions with a single argument.
+    
     Args:
-        rep (str): Replication identifier.
-        config (dict): Configuration dictionary.
-        dataset (pd.DataFrame): Dataset for the simulation.
-        utility (Utility): Utility function.
-        scheduling_algorithm (SchedulingAlgorithm): Scheduling algorithm.
-        singleps (bool): Flag for single spine leaf topology.
-        with_bw (bool): Flag indicating whether to apply bandwidth constraints.
+        args (tuple): Contains all necessary arguments for the simulation.
     """
+    (rep, config, dataset_path, utility, scheduling_algorithm, singleps, with_bw) = args
+    # Load dataset within the worker to avoid pickling large DataFrame
+    dataset_plebi = pd.read_csv(dataset_path)
+    # dataset_plebi = pd.read_csv('/home/cc/PlebyNet/traces/302_70J_50N_NFD_HN_NDJ_MPS_BW_TETRIS_FIFO_dataset.csv')
+    
+    
     topology = create_topology(config['LeafSpine'], singleps, with_bw)
 
     simulator = Simulator_Plebiscito(
         filename=rep,
         n_nodes=config['num_nodes'],
         n_jobs=config['num_jobs'],
-        dataset=dataset,
+        dataset=dataset_plebi,
         scheduling_algorithm=scheduling_algorithm,
         utility=utility,
         debug_level=DebugLevel.TRACE,
@@ -178,15 +135,17 @@ def run_simulation(rep: str, config: dict, dataset: pd.DataFrame, utility: Utili
     simulator.run()
     logging.info(f"Simulation completed: Rep={rep}, Utility={utility.name}, "
                  f"Scheduling={scheduling_algorithm.name}, SinglePS={singleps}, WithBW={with_bw}")
+    return f"Completed: Rep={rep}, Utility={utility.name}, Scheduling={scheduling_algorithm.name}, SinglePS={singleps}, WithBW={with_bw}"
 
 def main(rep: str):
-    # config_file = 'config_100_100n_100bw.yaml'
+    config_file = 'config_100_100n_100bw.yaml'
     # config_file = 'config_200_100n_25bw.yaml'
     # config_file = 'config_300_50n_100bw.yaml'
-    config_file = 'config_400_50n_25bw.yaml'
+    # config_file = 'config_400_50n_25bw.yaml'
+    
+    
     config = load_config(config_file)
 
-    # Define all required top-level configuration keys
     required_keys = [
         'num_jobs',
         'num_nodes',
@@ -203,7 +162,6 @@ def main(rep: str):
         'LeafSpine'
     ]
 
-    # Validate configuration
     try:
         validate_config(config, required_keys)
         logging.info("Configuration validation successful.")
@@ -218,21 +176,28 @@ def main(rep: str):
 
     CSV_FILE_PATH = Path(__file__).parent / config['csv_file_path']
     CSV_FILE = config['csv_file']
+    dataset_full_path = CSV_FILE_PATH / CSV_FILE
 
     # Initialize dataset
+    # Note: Instead of passing the DataFrame to each process, save it to a CSV and let each worker load it.
+    # This avoids the overhead of pickling large DataFrames.
     dataset = init_go_(NUM_JOBS, CSV_FILE, rep, config['fix_duration'])
     df_dataset_full = pd.DataFrame(dataset)
     random_state = int(time.time())
     dataset_plebi = df_dataset_full.sample(n=NUM_JOBS, random_state=random_state)
     dataset_plebi = poisson_arrivals(dataset_plebi, total_time=500, total_jobs=NUM_JOBS)
-    # dataset_plebi = pd.read_csv('/home/cc/PlebyNet/traces/200_200J_100N_NFD_HN_NDJ_MPS_BW_TETRIS_FIFO_dataset.csv')
-    logging.info("Dataset initialized and loaded.")
+    
+    # Save the prepared dataset to a temporary CSV file
+    temp_dataset_path = Path(f"temp_dataset_rep_{rep}.csv")
+    dataset_plebi.to_csv(temp_dataset_path, index=False)
+    logging.info(f"Dataset initialized and saved to {temp_dataset_path}.")
 
     # Simulation Parameters from config
     utils = config['utils']
     sched = config['sched']
 
-    # Iterate through experiment configurations
+    # Define all experiment configurations
+    experiment_tasks = []
     for util in utils:
         utility = getattr(Utility, util, None)
         if utility is None:
@@ -247,7 +212,7 @@ def main(rep: str):
 
             # Define experiment scenarios
             experiment_scenarios = [
-                # {'singleps': False, 'with_bw': True},
+                {'singleps': False, 'with_bw': True},
                 {'singleps': True, 'with_bw': True},
                 {'singleps': True, 'with_bw': False}
             ]
@@ -256,19 +221,41 @@ def main(rep: str):
                 singleps = scenario['singleps']
                 with_bw = scenario['with_bw']
 
-                # Run the simulation
-                run_simulation(
-                    rep=rep,
-                    config=config,
-                    dataset=dataset_plebi,
-                    utility=utility,
-                    scheduling_algorithm=scheduling_algorithm,
-                    singleps=singleps,
-                    with_bw=with_bw
+                # Prepare arguments for the simulation
+                args = (
+                    rep,
+                    config,
+                    temp_dataset_path,  # Pass the dataset path
+                    utility,
+                    scheduling_algorithm,
+                    singleps,
+                    with_bw
                 )
+                experiment_tasks.append(args)
+
+    # Determine the number of workers (you can adjust this based on your CPU cores)
+    max_workers = os.cpu_count() or 4
+
+    # Execute simulations in parallel
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all tasks
+        future_to_task = {executor.submit(run_simulation, task): task for task in experiment_tasks}
+        
+        # Optionally, display progress
+        for future in as_completed(future_to_task):
+            task = future_to_task[future]
+            try:
+                result = future.result()
+                logging.info(result)
+            except Exception as exc:
+                logging.error(f"Simulation generated an exception: {exc}")
+
+    # Clean up the temporary dataset file
+    if temp_dataset_path.exists():
+        os.remove(temp_dataset_path)
+        logging.info(f"Temporary dataset file {temp_dataset_path} removed.")
 
 if __name__ == '__main__':
-    # Ensure the correct number of arguments
     if len(sys.argv) != 2:
         print("Usage: python main.py <rep>")
         sys.exit(1)

@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # Total number of experiments
-TOTAL=40
+TOTAL=10
 
 # Maximum number of concurrent processes
-CONCURRENT=40
+CONCURRENT=5
 
 # Starting index (adjust as needed)
-START_INDEX=200
+START_INDEX=300
 
 # Calculate the ending index
 END_INDEX=$((START_INDEX + TOTAL - 1))
@@ -16,7 +16,7 @@ END_INDEX=$((START_INDEX + TOTAL - 1))
 for ((i=START_INDEX; i<=END_INDEX; i++))
 do
     # Start the Python script in the background and redirect output
-    python3 main.py "$i" &
+    python3 main_parallel.py "$i" &
     sleep 1
 
     # Get the current number of background jobs

@@ -552,8 +552,8 @@ class Simulator_Plebiscito:
                                 # Fetch previous bid if it exists
 
                                 
-                                # if job_id == 18590: #and time_instant ==53:# and node.id == 40 and time_now == 2 :
-                                #     print('check node behaviourr')
+                                if job_id == 30250: #and time_instant ==53:# and node.id == 40 and time_now == 2 :
+                                    print('check node behaviourr')
 
                                 if job_id in node.bids:
                                     prev_bid = copy.deepcopy(node.bids[job_id]['auction_id'])
@@ -721,28 +721,7 @@ class Simulator_Plebiscito:
                                         #     self.topology.plot_bandwidth_utilization()  # Call the plot method for spine utilization
                                         #     self.generate_plots_resources()
                                     else:
-                                        if job_id in job_speedup and 'reducer' in job_speedup[job_id]:
-                                            # Decrement the reducer value by 0.1, round it to one decimal place, and ensure it does not go below 0
-                                            job_speedup[job_id]['reducer'] = max(0, round(job_speedup[job_id]['reducer'] - 0.1, 1))
-                                        else:
-                                            job_speedup[job_id]['reducer'] = 0.9                                                        
 
-                                        if job_speedup[job_id]['reducer'] < 0.1:
-                                            job_speedup[job_id]['reducer'] = 0.9 
-                                            job_speedup[job_id]['alloc_bw'] = job_speedup[job_id]['read_count']
-
-                                        else:
-                                            job_speedup[job_id]['alloc_bw'] = int(job_speedup[job_id]['read_count'] * job_speedup[job_id]['reducer'])
-                                        
-                                        if job_id in job_speedup and 'retry' not in job_speedup[job_id]:
-                                            # Decrement the reducer value by 0.1, round it to one decimal place, and ensure it does not go below 0
-                                            job_speedup[job_id]['retry'] = 1
-                                        else:
-                                            job_speedup[job_id]['retry'] += 1
-
-
-
-                                        job_speedup[job_id]['alloc_bw'] = int(job_speedup[job_id]['alloc_bw'] * 0.9)
                                         logger.debug(f"[SIM] [INSUFFICIENT BW] Job: {job_id}, {allocations}, BW:{job_speedup[job_id]['read_count']}/{job_speedup[job_id]['alloc_bw']}")
                                         # self.topology.get_utilization_percentage()
 
@@ -766,6 +745,28 @@ class Simulator_Plebiscito:
                         # if not allctd and cnt > 2:
                         if not allctd:
                             if self.with_bw:  # Here we try the allocation multiple times by reducing the bw which might be the bottleneck!
+                                if job_id in job_speedup and 'reducer' in job_speedup[job_id]:
+                                    # Decrement the reducer value by 0.1, round it to one decimal place, and ensure it does not go below 0
+                                    job_speedup[job_id]['reducer'] = max(0, round(job_speedup[job_id]['reducer'] - 0.1, 1))
+                                else:
+                                    job_speedup[job_id]['reducer'] = 0.9                                                        
+
+                                if job_speedup[job_id]['reducer'] < 0.1:
+                                    job_speedup[job_id]['reducer'] = 0.9 
+                                    job_speedup[job_id]['alloc_bw'] = job_speedup[job_id]['read_count']
+
+                                else:
+                                    job_speedup[job_id]['alloc_bw'] = int(job_speedup[job_id]['read_count'] * job_speedup[job_id]['reducer'])
+                                
+                                if job_id in job_speedup and 'retry' not in job_speedup[job_id]:
+                                    # Decrement the reducer value by 0.1, round it to one decimal place, and ensure it does not go below 0
+                                    job_speedup[job_id]['retry'] = 1
+                                else:
+                                    job_speedup[job_id]['retry'] += 1
+
+
+
+                                job_speedup[job_id]['alloc_bw'] = int(job_speedup[job_id]['alloc_bw'] * 0.9)
 
                                 subset.loc[subset['job_id'] == job_id, 'read_count'] = job_speedup[job_id]['alloc_bw']
                                 if float('-inf') not in allocations:
