@@ -7,7 +7,7 @@ import sys
 import sys
 from collections import deque
 from enum import Enum
-from base_topology import BaseTopology
+from src.base_topology import BaseTopology
 import networkx as nx
 
 # class syntax
@@ -586,5 +586,7 @@ class FatTreeTopology(BaseTopology):
         for edge in edge_switches:
             for host in hosts:
                 self.graph.add_edge(edge, host, bandwidth=1)
-
         return self.graph
+    
+
+
