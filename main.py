@@ -11,6 +11,7 @@ from src.dataset_builder import generate_dataset
 from src.dataset_loader import init_go_, poisson_arrivals
 from src.topology_nx import SpineLeafTopology
 
+
 def load_config(config_path: str) -> dict:
     """
     Load the YAML configuration file.
@@ -24,6 +25,30 @@ def load_config(config_path: str) -> dict:
     with open(config_path, 'r') as file:
         config = yaml.safe_load(file)
     return config
+
+
+def get_bandwidth_config(config: dict, with_bw) -> dict:
+    """
+    Select the bandwidth configuration based on bw_mode.
+
+    Args:
+        config (dict): The entire configuration dictionary.
+
+    Returns:
+        dict: Selected bandwidth configuration.
+    """
+    if with_bw:
+        # Check for 'limited_bw' in the config
+        if 'limited_bw' not in config.get('LeafSpine', {}):
+            print("Warning: 'limited_bw' not found, using 'infinite_bw' configuration.")
+            return config['LeafSpine'].get('infinite_bw')
+        return config['LeafSpine']['limited_bw']
+    else:
+        # If 'infinite_bw' is available, return it
+        if 'infinite_bw' not in config.get('LeafSpine', {}):
+            raise KeyError("Missing 'infinite_bw' configuration in the YAML file.")
+        return config['LeafSpine']['infinite_bw']
+
 
 def validate_config(config: dict, required_keys: list):
     """
@@ -40,35 +65,6 @@ def validate_config(config: dict, required_keys: list):
     if missing_keys:
         raise KeyError(f"Missing configuration parameters: {', '.join(missing_keys)}")
 
-    # Additionally validate nested keys for bandwidth configurations
-    # bw_mode = config.get('bw_mode', None)
-    # if bw_mode not in ['limited', 'infinite']:
-        # raise ValueError("Invalid 'bw_mode' value. Must be 'limited' or 'infinite'.")
-    for with_bw in config.get('with_bw_options', None):
-        bw_required_keys = ['max_spine_capacity', 'max_leaf_capacity', 'max_node_bw', 'max_leaf_to_spine_bw']
-        if with_bw:
-            missing_bw = [key for key in bw_required_keys if key not in config.get('limited_bw', {})]
-            if missing_bw:
-                raise KeyError(f"Missing limited_bw parameters: {', '.join(missing_bw)}")
-        else:
-            missing_bw = [key for key in bw_required_keys if key not in config.get('infinite_bw', {})]
-            if missing_bw:
-                raise KeyError(f"Missing infinite_bw parameters: {', '.join(missing_bw)}")
-
-def get_bandwidth_config(config: dict, with_bw) -> dict:
-    """
-    Select the bandwidth configuration based on bw_mode.
-
-    Args:
-        config (dict): The entire configuration dictionary.
-
-    Returns:
-        dict: Selected bandwidth configuration.
-    """
-    if with_bw:
-        return config['limited_bw']
-    else:
-        return config['infinite_bw']
 
 if __name__ == '__main__':
     # Ensure the correct number of arguments
@@ -96,13 +92,6 @@ if __name__ == '__main__':
         'fix_duration'
     ]
 
-    # Validate configuration
-    # try:
-    #     validate_config(config, required_keys)
-    # except (KeyError, ValueError) as e:
-    #     print(f"Configuration Error: {e}")
-    #     sys.exit(1)
-
     # Assign general variables from config
     NUM_JOBS = config['num_jobs']
     NUM_NODES = config['num_nodes']
@@ -129,20 +118,21 @@ if __name__ == '__main__':
 
         # Bandwidth selection
         with_bw = config['with_bw']
+        bw_config = get_bandwidth_config(config, with_bw)
+
         if with_bw:
             # Use limited bandwidth
-            SPINE_CAPACITY = topology_config['max_spine_capacity']
-            LEAF_CAPACITY = topology_config['max_leaf_capacity']
-            NODE_BW = topology_config['max_node_bw']
-            LEAF_TO_SPINE_BW = topology_config['max_leaf_to_spine_bw']
+            SPINE_CAPACITY = bw_config['max_spine_capacity']
+            LEAF_CAPACITY = bw_config['max_leaf_capacity']
+            NODE_BW = bw_config['max_node_bw']
+            LEAF_TO_SPINE_BW = bw_config['max_leaf_to_spine_bw']
         else:
             # Use infinite bandwidth
-            infinite_bw_config = topology_config['infinite_bw']
-            SPINE_CAPACITY = infinite_bw_config['max_spine_capacity']
-            LEAF_CAPACITY = infinite_bw_config['max_leaf_capacity']
-            NODE_BW = infinite_bw_config['max_node_bw']
-            LEAF_TO_SPINE_BW = infinite_bw_config['max_leaf_to_spine_bw']
-            
+            SPINE_CAPACITY = bw_config['max_spine_capacity']
+            LEAF_CAPACITY = bw_config['max_leaf_capacity']
+            NODE_BW = bw_config['max_node_bw']
+            LEAF_TO_SPINE_BW = bw_config['max_leaf_to_spine_bw']
+
         print("Topology Type:", topology_type)
         print("Number of Spine Switches:", NUM_SPINE_SWITCHES)
         print("Number of Leaf Switches:", NUM_LEAF_SWITCHES)
@@ -160,20 +150,24 @@ if __name__ == '__main__':
         # Example Usage
         adj_matrix = topology.calculate_host_to_host_adjacency_matrix()
         print("Adjacency Matrix:", adj_matrix)
-        
-
-
 
     # Assign topology variables from config
     HETEROGENEOUS_NODES = config['heterogeneous_nodes']
     FIX_DURATION = config['fix_duration']
 
-
     # JOBS settings
     DISCARD_JOB = config['discard_job']
 
     # Initialize dataset
-    dataset = init_go_(NUM_JOBS, CSV_FILE, rep, FIX_DURATION)
+    # Convert the rep value to a valid integer for the seed
+    seed = rep.replace('rep_', '')
+    try:
+        seed = int(seed)
+    except ValueError:
+        print(f"Invalid rep value: {rep}. Using default seed.")
+        seed = int(time.time())
+
+    dataset = init_go_(NUM_JOBS, CSV_FILE, seed, FIX_DURATION)
     df_dataset_full = pd.DataFrame(dataset)
 
     # Simulation Parameters from config
@@ -184,7 +178,6 @@ if __name__ == '__main__':
     for rep_ in range(1):
         # Sample jobs
         random_state = int(time.time())
-        # random_state = 42
         dataset_plebi_ = df_dataset_full.sample(n=NUM_JOBS, random_state=random_state)
         dataset_plebi_ = poisson_arrivals(dataset_plebi_, total_time=500, total_jobs=NUM_JOBS)
         print(dataset_plebi_.describe())
@@ -202,29 +195,26 @@ if __name__ == '__main__':
                     print(f"Warning: '{s}' is not a valid SchedulingAlgorithm member.")
                     continue
                 print(utility)
-                # for withbw_option in with_bw:
-                # print(withbw_option)
-                # Assign bandwidth variables based on bw_mode from config
-                # bw_config = get_bandwidth_config(config, withbw_option)
 
                 # Debugging: Print loaded configuration
-                # print("Loaded Configuration:")
-                # print(f"Replication: {rep}")
-                # print(f"Number of Jobs: {NUM_JOBS}")
-                # print(f"Discard Jobs: {DISCARD_JOB}")
-                # print(f"HETEROGENEOUS NODES: {HETEROGENEOUS_NODES}")
-                # print(f"Number of Nodes: {NUM_NODES}")
-                # print(f"bw_config: {bw_config}")
-                # print(f"Number of Spine Switches: {NUM_SPINE_SWITCHES}")
-                # print(f"Number of Leaf Switches: {NUM_LEAF_SWITCHES}")
-                # print(f"Hosts per Leaf: {HOST_PER_LEAF}")
-                # print(f"Max Spine Capacity: {MAX_SPINE_CAPACITY}")
-                # print(f"Max Leaf Capacity: {MAX_LEAF_CAPACITY}")
-                # print(f"Max Node BW: {MAX_NODE_BW}")
-                # print(f"Max Leaf to Spine BW: {MAX_LEAF_TO_SPINE_BW}")
-                # print(f"Utilities: {config['utils']}")
-                # print(f"Scheduling Algorithms: {config['sched']}")
-                # print(f"With Bandwidth Options: {config['with_bw']}")
+                print("Loaded Configuration:")
+                print(f"Replication: {rep}")
+                print(f"Number of Jobs: {NUM_JOBS}")
+                print(f"Discard Jobs: {DISCARD_JOB}")
+                print(f"HETEROGENEOUS NODES: {HETEROGENEOUS_NODES}")
+                print(f"Number of Nodes: {NUM_NODES}")
+                print(f"bw_config: {bw_config}")
+                print(f"Number of Spine Switches: {NUM_SPINE_SWITCHES}")
+                print(f"Number of Leaf Switches: {NUM_LEAF_SWITCHES}")
+                print(f"Hosts per Leaf: {HOST_PER_LEAF}")
+                print(f"Max Spine Capacity: {MAX_SPINE_CAPACITY}")
+                print(f"Max Leaf Capacity: {MAX_LEAF_CAPACITY}")
+                print(f"Max Node BW: {MAX_NODE_BW}")
+                print(f"Max Leaf to Spine BW: {MAX_LEAF_TO_SPINE_BW}")
+                print(f"Utilities: {config['utils']}")
+                print(f"Scheduling Algorithms: {config['sched']}")
+                print(f"With Bandwidth Options: {config['with_bw']}")
+
                 topology = SpineLeafTopology(num_spine=NUM_SPINE_SWITCHES,
                                         num_leaf=NUM_LEAF_SWITCHES,
                                         num_hosts_per_leaf=HOST_PER_LEAF,
@@ -242,14 +232,9 @@ if __name__ == '__main__':
                     utility=utility,
                     debug_level=DebugLevel.TRACE,
                     topology=topology,
-                    # enable_logging=True,
                     with_bw=with_bw,
                     discard_job=DISCARD_JOB,
                     heterogeneous_nodes=HETEROGENEOUS_NODES,
                     fix_duration=FIX_DURATION
                 )
                 simulator.run()
-
-                # # Determine result filename based on bandwidth option
-                # result_filename = 'BW_results.csv' if with_bw else 'results.csv'
-                # simulator.save_res(result_filename, rep)

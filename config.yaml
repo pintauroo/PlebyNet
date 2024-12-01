@@ -1,16 +1,11 @@
 # Configuration for Simulator_Plebiscito
 
-# REmember to set the
-#  job duration
-# output filename
-
 # General Settings
-num_jobs: 50
+num_jobs: 20
 num_nodes: 50
 n_failure: 0
 csv_file_path: "traces/pai/"
 csv_file: "cleaned_dfws.csv"
-
 
 # with_bw: false
 with_bw: true
@@ -23,10 +18,10 @@ LeafSpine:
   num_spine_switches: 2
   num_leaf_switches: 5
   host_per_leaf: 10
-  max_spine_capacity: 500
-  max_leaf_capacity: 500
-  max_node_bw: 100
-  max_leaf_to_spine_bw: 100
+  max_spine_capacity: 10000  # Increased from 500 to 10000
+  max_leaf_capacity: 10000   # Increased from 500 to 10000
+  max_node_bw: 2000         # Increased from 100 to 2000
+  max_leaf_to_spine_bw: 2000  # Increased from 100 to 2000
 
   # Infinite Bandwidth Option
   infinite_bw:
@@ -34,6 +29,13 @@ LeafSpine:
     max_leaf_capacity: 99999999999
     max_node_bw: 99999999999
     max_leaf_to_spine_bw: 99999999999
+  
+  # Correctly indented limited_bw section
+  limited_bw:
+    max_spine_capacity: 10000   # Increased from 500 to 10000
+    max_leaf_capacity: 10000    # Increased from 500 to 10000
+    max_node_bw: 2000           # Increased from 100 to 2000
+    max_leaf_to_spine_bw: 2000  # Increased from 100 to 2000
 
 # Simulation Parameters
 utils:
@@ -48,12 +50,8 @@ sched:
   - "FIFO"
 
 # Jobs settings
-
-# discard_job: true
 discard_job: false
 
 heterogeneous_nodes: true
-# heterogeneous_nodes: false
 
 fix_duration: true
-# fix_duration: false
