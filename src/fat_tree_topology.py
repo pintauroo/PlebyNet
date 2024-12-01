@@ -1,5 +1,6 @@
 import argparse
 import networkx as nx
+import matplotlib.pyplot as plt
 from topology_nx import BaseTopology
 
 
@@ -74,7 +75,7 @@ class FatTreeTopology(BaseTopology):
         Add edges between nodes, considering custom bandwidth.
         """
         default_bandwidth = self.custom_bandwidth.get(node_types, self.bandwidth)
-        self.G.add_edge(node1, node2, bandwidth=default_bandwidth, available_bandwidth=default_bandwidth)
+        self.G.add_edge(node1, node2, bandwidth=default_bandwidth, available_bandwidth=default_bandwidth, used_bandwidth=0)
 
     def allocate_ps_to_workers_balanced(self):
         """
@@ -86,7 +87,13 @@ class FatTreeTopology(BaseTopology):
             best_switch = self._find_best_edge_switch(host)
             if best_switch:
                 allocation[host] = best_switch
-                self.G[host][best_switch]['available_bandwidth'] -= self.bandwidth
+                if self.G[host][best_switch]['available_bandwidth'] >= self.bandwidth:
+                    self.G[host][best_switch]['available_bandwidth'] -= self.bandwidth
+                    self.G[host][best_switch]['used_bandwidth'] += self.bandwidth
+                    print(f"Allocated {self.bandwidth} bandwidth from {best_switch} to {host}")
+                    print(f"Updated available bandwidth: {self.G[host][best_switch]['available_bandwidth']}")
+                else:
+                    print(f"Not enough bandwidth to allocate from {best_switch} to {host}")
         return allocation
 
     def allocate_ps_to_workers_single(self, node, workers):
@@ -98,6 +105,7 @@ class FatTreeTopology(BaseTopology):
             if self.G.has_edge(node, worker) and self.G[node][worker]['available_bandwidth'] > 0:
                 allocation[worker] = node
                 self.G[node][worker]['available_bandwidth'] -= self.bandwidth
+                self.G[node][worker]['used_bandwidth'] += self.bandwidth
             else:
                 allocation[worker] = None
         return allocation
@@ -109,6 +117,7 @@ class FatTreeTopology(BaseTopology):
         for worker in workers:
             if self.G.has_edge(node, worker):
                 self.G[node][worker]['available_bandwidth'] += self.bandwidth
+                self.G[node][worker]['used_bandwidth'] -= self.bandwidth
 
     def _find_best_edge_switch(self, host):
         """
@@ -122,6 +131,62 @@ class FatTreeTopology(BaseTopology):
                 max_bandwidth = edge_data['available_bandwidth']
                 best_switch = neighbor
         return best_switch
+
+    def get_utilization_stats(self):
+        """
+        Calculate and return the bandwidth utilization statistics for the entire topology.
+        """
+        stats = {
+            'total_bandwidth': 0,
+            'used_bandwidth': 0,
+            'available_bandwidth': 0,
+            'utilization_percentage': 0
+        }
+        
+        # Loop over each edge and calculate the stats
+        for node1, node2, data in self.G.edges(data=True):
+            total_bandwidth = data['bandwidth']
+            available_bandwidth = data['available_bandwidth']
+            used_bandwidth = data.get('used_bandwidth', 0)  # Track the used bandwidth correctly
+            
+            stats['total_bandwidth'] += total_bandwidth
+            stats['used_bandwidth'] += used_bandwidth
+            stats['available_bandwidth'] += available_bandwidth
+    
+        # Calculate utilization as a percentage
+        if stats['total_bandwidth'] > 0:
+            stats['utilization_percentage'] = (stats['used_bandwidth'] / stats['total_bandwidth']) * 100
+
+        return stats
+
+    def visualize_topology(self):
+        """
+        Visualize the Fat-Tree topology with color coding for different node types.
+        """
+        # Use a shell layout to position nodes
+        shell_pos = nx.shell_layout(self.G)  
+        
+        # Draw the nodes and edges
+        node_colors = [self._get_node_color(node) for node in self.G.nodes()]
+        nx.draw(self.G, pos=shell_pos, with_labels=True, node_size=500, node_color=node_colors, font_size=8, font_weight="bold", edge_color='gray')
+
+        # Show the plot
+        plt.title("Fat-Tree Topology Visualization")
+        plt.show()
+
+    def _get_node_color(self, node):
+        """
+        Return the color for each node type.
+        """
+        node_type = self.G.nodes[node]['type']
+        if node_type == "core":
+            return 'red'
+        elif node_type == "aggregation":
+            return 'blue'
+        elif node_type == "edge":
+            return 'green'
+        else:
+            return 'yellow'
 
 
 if __name__ == "__main__":
@@ -160,3 +225,16 @@ if __name__ == "__main__":
     fat_tree.deallocate_bandwidth(node, workers)
     print("\nDeallocated Bandwidth for workers from edge_0:")
     print(f"Updated Bandwidths: {[fat_tree.G[node][worker]['available_bandwidth'] for worker in workers if fat_tree.G.has_edge(node, worker)]}")
+
+    # Get utilization stats
+    utilization_stats = fat_tree.get_utilization_stats()
+    
+    # Display stats
+    print("\nBandwidth Utilization Stats:")
+    print(f"Total Bandwidth: {utilization_stats['total_bandwidth']}")
+    print(f"Used Bandwidth: {utilization_stats['used_bandwidth']}")
+    print(f"Available Bandwidth: {utilization_stats['available_bandwidth']}")
+    print(f"Utilization: {utilization_stats['utilization_percentage']}%")
+
+    # Visualize the topology
+    fat_tree.visualize_topology()
