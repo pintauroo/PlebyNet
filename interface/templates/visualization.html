@@ -117,7 +117,7 @@
     <script>
         // Tooltip logic
         var tooltip = document.getElementById('tooltip');
-        
+
         function showTooltip(event, content) {
             tooltip.style.visibility = 'visible';
             tooltip.innerHTML = content;
@@ -129,7 +129,7 @@
             tooltip.style.visibility = 'hidden';
         }
 
-        // Initial topology data
+        // Initial topology data (the topology data passed from Flask)
         var initialTopology = {
             "nodes": [
                 {"id": "spine1", "type": "spine", "x": 1, "y": 1, "label": "Spine 1", "reservedBandwidth": 200, "availableBandwidth": 100},
@@ -175,7 +175,9 @@
                         bgcolor: 'rgba(0, 0, 0, 0.7)',
                         font: { color: '#fff' }
                     },
-                    hovertemplate: '<b>%{text}</b><br>Type: %{marker.color}<br>Reserved Bandwidth: %{text}<extra></extra>'
+                    hovertemplate: '<b>%{text}</b><br>Type: %{marker.color}<br>Reserved Bandwidth: %{text}<extra></extra>',
+                    hoveron: 'points+text',  // Ensure hovering over both the node and text
+                    hovertemplate: 'Type: %{text}<br>Reserved Bandwidth: %{marker.color}<br>Available Bandwidth: %{text}'
                 });
             });
 
@@ -225,13 +227,13 @@
         }
 
         // Reset Button Functionality
-        document.getElementById('resetButton').addEventListener('click', function() {
+        document.getElementById('resetButton').addEventListener('click', function () {
             topology = JSON.parse(JSON.stringify(initialTopology));  // Reset topology to initial state
             drawTopology();
         });
 
         // Edit Button Functionality
-        document.getElementById('editButton').addEventListener('click', function() {
+        document.getElementById('editButton').addEventListener('click', function () {
             let newSpine1X = prompt("Enter new X for Spine 1", topology.nodes[0].x);
             let newSpine1Y = prompt("Enter new Y for Spine 1", topology.nodes[0].y);
 

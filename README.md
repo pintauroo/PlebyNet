@@ -24,3 +24,11 @@ python main.py 1
 ```
 
 The first argument (1) represents the execution number. You can change it as needed.
+
+### 4. Web Interface for the Topology Config    
+
+Run the app script with:
+
+```sh
+python app.py 1
+```

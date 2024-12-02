@@ -9,9 +9,18 @@ def index():
 @app.route('/visualization', methods=['POST'])
 def visualization():
     # Getting topology data from form input
-    num_spines = int(request.form['num_spines'])
-    num_leaves = int(request.form['num_leaves'])
-    num_hosts_per_leaf = int(request.form['num_hosts_per_leaf'])
+    num_spines = request.form.get('num_spines')
+    num_leaves = request.form.get('num_leaves')
+    num_hosts_per_leaf = request.form.get('num_hosts_per_leaf')
+
+    # Check if all required fields are present
+    if not num_spines or not num_leaves or not num_hosts_per_leaf:
+        return "Missing required fields", 400
+
+    # Convert values to integers
+    num_spines = int(num_spines)
+    num_leaves = int(num_leaves)
+    num_hosts_per_leaf = int(num_hosts_per_leaf)
 
     # Example of simple Leaf-Spine Topology Data Structure
     topology = {
@@ -24,6 +33,10 @@ def visualization():
         }
     }
 
+    # Debugging step: Check if form values are processed correctly
+    print(f"num_spines: {num_spines}, num_leaves: {num_leaves}, num_hosts_per_leaf: {num_hosts_per_leaf}")
+    
+    # Return the 'visualization.html' template with the topology data
     return render_template('visualization.html', topology=topology)
 
 if __name__ == '__main__':
