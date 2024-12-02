@@ -1,3 +1,5 @@
+# main.py
+
 import sys
 import pandas as pd
 import os
@@ -9,8 +11,7 @@ import logging
 from src.simulator import Simulator_Plebiscito
 from src.config import DebugLevel, SchedulingAlgorithm, Utility
 from src.dataset_loader import init_go_, poisson_arrivals
-from src.topology_nx import SpineLeafTopology as SpineLeafTopology_mps
-from src.topology_nx_v1 import SpineLeafTopology as SpineLeafTopology_sps
+from src.topology_nx import SpineLeafTopology, FatTreeTopology  # Import topology classes
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -53,95 +54,118 @@ def validate_config(config: dict, required_keys: list):
         raise KeyError(f"Missing configuration parameters: {', '.join(missing_keys)}")
 
     # Validate topology configurations
-    if 'LeafSpine' not in config:
-        raise KeyError("Missing 'LeafSpine' topology configuration.")
+    topology_type = config.get('topology_type')
+    if topology_type == 'LeafSpine':
+        if 'LeafSpine' not in config:
+            raise KeyError("Missing 'LeafSpine' topology configuration.")
 
-    leaf_spine_config = config['LeafSpine']
-    required_leaf_spine_keys = [
-        'num_spine_switches',
-        'num_leaf_switches',
-        'host_per_leaf',
-        'max_spine_capacity',
-        'max_leaf_capacity',
-        'max_node_bw',
-        'max_leaf_to_spine_bw',
-        'infinite_bw'
-    ]
-    missing_leaf_spine_keys = [key for key in required_leaf_spine_keys if key not in leaf_spine_config]
-    if missing_leaf_spine_keys:
-        raise KeyError(f"Missing LeafSpine configuration parameters: {', '.join(missing_leaf_spine_keys)}")
+        leaf_spine_config = config['LeafSpine']
+        required_leaf_spine_keys = [
+            'num_spine_switches',
+            'num_leaf_switches',
+            'host_per_leaf',
+            'max_spine_capacity',
+            'max_leaf_capacity',
+            'max_node_bw',
+            'max_leaf_to_spine_bw',
+            'infinite_bw'
+        ]
+        missing_leaf_spine_keys = [key for key in required_leaf_spine_keys if key not in leaf_spine_config]
+        if missing_leaf_spine_keys:
+            raise KeyError(f"Missing LeafSpine configuration parameters: {', '.join(missing_leaf_spine_keys)}")
 
-    # Validate nested infinite_bw configurations
-    infinite_bw = leaf_spine_config.get('infinite_bw', {})
-    required_bw_keys = [
-        'max_spine_capacity',
-        'max_leaf_capacity',
-        'max_node_bw',
-        'max_leaf_to_spine_bw'
-    ]
-    missing_bw_keys = [key for key in required_bw_keys if key not in infinite_bw]
-    if missing_bw_keys:
-        raise KeyError(f"Missing infinite_bw parameters in LeafSpine: {', '.join(missing_bw_keys)}")
+        # Validate nested infinite_bw configurations
+        infinite_bw = leaf_spine_config.get('infinite_bw', {})
+        required_bw_keys = [
+            'max_spine_capacity',
+            'max_leaf_capacity',
+            'max_node_bw',
+            'max_leaf_to_spine_bw'
+        ]
+        missing_bw_keys = [key for key in required_bw_keys if key not in infinite_bw]
+        if missing_bw_keys:
+            raise KeyError(f"Missing infinite_bw parameters in LeafSpine: {', '.join(missing_bw_keys)}")
 
-def get_bandwidth_config(leaf_spine_config: dict, with_bw: bool) -> dict:
+    elif topology_type == 'FatTree':
+        if 'FatTree' not in config:
+            raise KeyError("Missing 'FatTree' topology configuration.")
+
+        fat_tree_config = config['FatTree']
+        required_fat_tree_keys = ['k', 'bandwidth', 'infinite_bw']
+        missing_fat_tree_keys = [key for key in required_fat_tree_keys if key not in fat_tree_config]
+        if missing_fat_tree_keys:
+            raise KeyError(f"Missing FatTree configuration parameters: {', '.join(missing_fat_tree_keys)}")
+
+        # Validate infinite_bw configurations
+        infinite_bw = fat_tree_config.get('infinite_bw', {})
+        required_bw_keys = ['bandwidth']
+        missing_bw_keys = [key for key in required_bw_keys if key not in infinite_bw]
+        if missing_bw_keys:
+            raise KeyError(f"Missing infinite_bw parameters in FatTree: {', '.join(missing_bw_keys)}")
+
+    else:
+        raise ValueError(f"Unknown topology type: {topology_type}")
+
+def get_bandwidth_config(topology_config: dict, with_bw: bool) -> dict:
     """
     Select the bandwidth configuration based on with_bw flag.
 
     Args:
-        leaf_spine_config (dict): LeafSpine topology configuration.
+        topology_config (dict): Topology configuration.
         with_bw (bool): Flag indicating whether to use limited bandwidth.
 
     Returns:
         dict: Selected bandwidth configuration.
     """
     if with_bw:
-        bw_config = {
-            'max_spine_capacity': leaf_spine_config['max_spine_capacity'],
-            'max_leaf_capacity': leaf_spine_config['max_leaf_capacity'],
-            'max_node_bw': leaf_spine_config['max_node_bw'],
-            'max_leaf_to_spine_bw': leaf_spine_config['max_leaf_to_spine_bw']
-        }
+        bw_config = {key: topology_config[key] for key in topology_config if key.startswith('bandwidth')}
     else:
-        infinite_bw = leaf_spine_config['infinite_bw']
-        bw_config = {
-            'max_spine_capacity': infinite_bw['max_spine_capacity'],
-            'max_leaf_capacity': infinite_bw['max_leaf_capacity'],
-            'max_node_bw': infinite_bw['max_node_bw'],
-            'max_leaf_to_spine_bw': infinite_bw['max_leaf_to_spine_bw']
-        }
+        infinite_bw = topology_config['infinite_bw']
+        bw_config = {key: infinite_bw[key] for key in infinite_bw}
     logging.debug(f"Bandwidth configuration selected: {'Limited' if with_bw else 'Infinite'}")
     return bw_config
 
-def create_topology(leaf_spine_config: dict, singleps: bool, with_bw: bool):
+def create_topology(config, singleps, with_bw):
     """
     Initialize the topology based on the configuration.
 
     Args:
-        leaf_spine_config (dict): LeafSpine topology configuration.
-        singleps (bool): Flag for single spine leaf topology.
+        config (dict): The configuration dictionary.
+        singleps (bool): Flag indicating whether to use a single parameter server.
         with_bw (bool): Flag indicating whether to apply bandwidth constraints.
 
     Returns:
-        SpineLeafTopology: Initialized topology object.
+        BaseTopology: Initialized topology object.
     """
-    bw_config = get_bandwidth_config(leaf_spine_config, with_bw)
+    topology_type = config['topology_type']
+    if topology_type == 'LeafSpine':
+        leaf_spine_config = config['LeafSpine']
+        bw_config = get_bandwidth_config(leaf_spine_config, with_bw)
 
-    topology_cls = SpineLeafTopology_sps if singleps else SpineLeafTopology_mps
+        topology = SpineLeafTopology(
+            num_spine=leaf_spine_config['num_spine_switches'],
+            num_leaf=leaf_spine_config['num_leaf_switches'],
+            num_hosts_per_leaf=leaf_spine_config['host_per_leaf'],
+            spine_bw=bw_config['max_spine_capacity'] * 100,
+            leaf_bw=bw_config['max_leaf_capacity'] * 100,
+            link_bw_leaf_to_node=bw_config['max_node_bw'] * 100,
+            link_bw_leaf_to_spine=bw_config['max_leaf_to_spine_bw'] * 100
+        )
+    elif topology_type == 'FatTree':
+        fat_tree_config = config['FatTree']
+        bw_config = get_bandwidth_config(fat_tree_config, with_bw)
+        k = fat_tree_config['k']
+        bandwidth = bw_config['bandwidth'] * 100  # Scale if necessary
 
-    topology = topology_cls(
-        num_spine=leaf_spine_config['num_spine_switches'],
-        num_leaf=leaf_spine_config['num_leaf_switches'],
-        num_hosts_per_leaf=leaf_spine_config['host_per_leaf'],
-        spine_bw=bw_config['max_spine_capacity'] * 100,
-        leaf_bw=bw_config['max_leaf_capacity'] * 100,
-        link_bw_leaf_to_node=bw_config['max_node_bw'] * 100,
-        link_bw_leaf_to_spine=bw_config['max_leaf_to_spine_bw'] * 100
-    )
-    logging.debug(f"Topology created with {'SPS' if singleps else 'MPS'} and {'with BW' if with_bw else 'without BW'}")
+        topology = FatTreeTopology(k=k, bandwidth=bandwidth)
+    else:
+        raise ValueError(f"Unknown topology type: {topology_type}")
+    logging.debug(f"Topology created with type {topology_type} and {'with BW' if with_bw else 'without BW'}")
     return topology
 
-def run_simulation(rep: str, config: dict, dataset: pd.DataFrame, utility: Utility, 
-                  scheduling_algorithm: SchedulingAlgorithm, singleps: bool, with_bw: bool):
+def run_simulation(rep: str, config: dict, dataset: pd.DataFrame,
+                   utility: Utility, scheduling_algorithm: SchedulingAlgorithm,
+                   singleps: bool, with_bw: bool):
     """
     Configure and run a single simulation.
 
@@ -151,10 +175,13 @@ def run_simulation(rep: str, config: dict, dataset: pd.DataFrame, utility: Utili
         dataset (pd.DataFrame): Dataset for the simulation.
         utility (Utility): Utility function.
         scheduling_algorithm (SchedulingAlgorithm): Scheduling algorithm.
-        singleps (bool): Flag for single spine leaf topology.
+        singleps (bool): Flag for single parameter server topology.
         with_bw (bool): Flag indicating whether to apply bandwidth constraints.
     """
-    topology = create_topology(config['LeafSpine'], singleps, with_bw)
+    topology = create_topology(config, singleps, with_bw)
+
+    # Visualize the topology
+    topology.draw_topology(title=f"{config['topology_type']} Topology Visualization")
 
     simulator = Simulator_Plebiscito(
         filename=rep,
@@ -180,11 +207,16 @@ def run_simulation(rep: str, config: dict, dataset: pd.DataFrame, utility: Utili
                  f"Scheduling={scheduling_algorithm.name}, SinglePS={singleps}, WithBW={with_bw}")
 
 def main(rep: str):
-    # config_file = 'config_100_100n_100bw.yaml'
-    # config_file = 'config_200_100n_25bw.yaml'
-    # config_file = 'config_300_50n_100bw.yaml'
-    config_file = 'config_400_50n_25bw.yaml'
+    config_file = 'config_100_100n_100bw.yaml'  # Update to your actual config file name
     config = load_config(config_file)
+
+    # Adjust NUM_NODES based on topology
+    if config['topology_type'] == 'FatTree':
+        k = config['FatTree']['k']
+        num_hosts = (k ** 3) // 4
+        config['num_nodes'] = num_hosts
+    else:
+        num_hosts = config['num_nodes']
 
     # Define all required top-level configuration keys
     required_keys = [
@@ -200,7 +232,6 @@ def main(rep: str):
         'heterogeneous_nodes',
         'fix_duration',
         'topology_type',
-        'LeafSpine'
     ]
 
     # Validate configuration
@@ -225,7 +256,6 @@ def main(rep: str):
     random_state = int(time.time())
     dataset_plebi = df_dataset_full.sample(n=NUM_JOBS, random_state=random_state)
     dataset_plebi = poisson_arrivals(dataset_plebi, total_time=500, total_jobs=NUM_JOBS)
-    # dataset_plebi = pd.read_csv('/home/cc/PlebyNet/traces/200_200J_100N_NFD_HN_NDJ_MPS_BW_TETRIS_FIFO_dataset.csv')
     logging.info("Dataset initialized and loaded.")
 
     # Simulation Parameters from config
@@ -247,9 +277,8 @@ def main(rep: str):
 
             # Define experiment scenarios
             experiment_scenarios = [
-                # {'singleps': False, 'with_bw': True},
-                {'singleps': True, 'with_bw': True},
-                {'singleps': True, 'with_bw': False}
+                {'singleps': False, 'with_bw': True},
+                {'singleps': False, 'with_bw': False}
             ]
 
             for scenario in experiment_scenarios:
@@ -272,6 +301,6 @@ if __name__ == '__main__':
     if len(sys.argv) != 2:
         print("Usage: python main.py <rep>")
         sys.exit(1)
-    
+
     rep = sys.argv[1]
     main(rep)
