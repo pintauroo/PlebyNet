@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Topology Configuration</title>
+    <style>
+        /* General Styles */
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f9f9f9;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        h1 {
+            color: #007bff;
+            margin-bottom: 30px;
+            font-size: 2rem;
+        }
+
+        /* Form Container Styles */
+        .form-container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 600px;
+            text-align: center;
+        }
+
+        label {
+            font-size: 1.1rem;
+            color: #333;
+            margin-bottom: 10px;
+            display: block;
+            text-align: left;
+        }
+
+        input[type="number"] {
+            padding: 10px;
+            font-size: 1rem;
+            width: 100%;
+            max-width: 300px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input[type="number"]:focus {
+            border-color: #007bff;
+        }
+
+        button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 100%;
+            max-width: 300px;
+            margin-top: 20px;
+        }
+
+        button:hover {
+            background-color: #218838;
+        }
+
+        button:focus {
+            outline: none;
+        }
+
+        /* Responsiveness */
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .form-container {
+                padding: 20px;
+                width: 90%;
+            }
+
+            input[type="number"] {
+                max-width: 100%;
+            }
+
+            button {
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Configure Topology</h1>
+
+    <div class="form-container">
+        <form action="/visualization" method="POST">
+            <label for="num_spines">Number of Spine Switches:</label>
+            <input type="number" id="num_spines" name="num_spines" required min="1" max="10"><br>
+
+            <label for="num_leaves">Number of Leaf Switches:</label>
+            <input type="number" id="num_leaves" name="num_leaves" required min="1" max="10"><br>
+
+            <label for="num_hosts_per_leaf">Number of Hosts per Leaf:</label>
+            <input type="number" id="num_hosts_per_leaf" name="num_hosts_per_leaf" required min="1" max="100"><br>
+
+            <button type="submit">Generate Topology</button>
+        </form>
+    </div>
+</body>
+
+</html>

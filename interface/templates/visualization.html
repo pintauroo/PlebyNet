@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Topology Visualization</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        header {
+            width: 100%;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 0;
+            text-align: center;
+            font-size: 1.5rem;
+        }
+
+        h1 {
+            margin: 0;
+        }
+
+        .plot-container {
+            width: 80%;
+            height: 80%;
+            max-width: 1000px;
+            max-height: 800px;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .button-container {
+            display: flex;
+            justify-content: space-around;
+            width: 80%;
+            margin-top: 20px;
+        }
+
+        .button-container button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .button-container button:hover {
+            background-color: #218838;
+        }
+
+        .button-container .reset-button {
+            background-color: #ffc107;
+        }
+
+        .button-container .reset-button:hover {
+            background-color: #e0a800;
+        }
+
+        .button-container .edit-button {
+            background-color: #007bff;
+        }
+
+        .button-container .edit-button:hover {
+            background-color: #0056b3;
+        }
+
+        /* Tooltip Styles */
+        .tooltip {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px;
+            border-radius: 5px;
+            visibility: hidden;
+            transition: opacity 0.3s;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>Network Topology Visualization</h1>
+    </header>
+
+    <div class="plot-container">
+        <div id="plotly-div"></div>
+    </div>
+
+    <div class="button-container">
+        <button id="resetButton" class="reset-button">Reset</button>
+        <button id="editButton" class="edit-button">Edit</button>
+        <button id="downloadCsvButton" class="edit-button">Download CSV</button>
+        <button id="downloadImageButton" class="edit-button">Download Image</button>
+    </div>
+
+    <div id="tooltip" class="tooltip"></div>
+
+    <script>
+        // Tooltip logic
+        var tooltip = document.getElementById('tooltip');
+        
+        function showTooltip(event, content) {
+            tooltip.style.visibility = 'visible';
+            tooltip.innerHTML = content;
+            tooltip.style.left = (event.pageX + 5) + 'px';
+            tooltip.style.top = (event.pageY + 5) + 'px';
+        }
+
+        function hideTooltip() {
+            tooltip.style.visibility = 'hidden';
+        }
+
+        // Initial topology data
+        var initialTopology = {
+            "nodes": [
+                {"id": "spine1", "type": "spine", "x": 1, "y": 1, "label": "Spine 1", "reservedBandwidth": 200, "availableBandwidth": 100},
+                {"id": "spine2", "type": "spine", "x": 3, "y": 1, "label": "Spine 2", "reservedBandwidth": 200, "availableBandwidth": 100},
+                {"id": "leaf1", "type": "leaf", "x": 0, "y": 0, "label": "Leaf 1", "reservedBandwidth": 150, "availableBandwidth": 75},
+                {"id": "leaf2", "type": "leaf", "x": 2, "y": 0, "label": "Leaf 2", "reservedBandwidth": 150, "availableBandwidth": 75},
+                {"id": "host1", "type": "host", "x": 0, "y": -1, "label": "Host 1", "reservedBandwidth": 50, "availableBandwidth": 25},
+                {"id": "host2", "type": "host", "x": 2, "y": -1, "label": "Host 2", "reservedBandwidth": 50, "availableBandwidth": 25}
+            ],
+            "edges": [
+                {"from": "spine1", "to": "leaf1", "reservedBandwidth": 100, "availableBandwidth": 50},
+                {"from": "spine1", "to": "leaf2", "reservedBandwidth": 100, "availableBandwidth": 50},
+                {"from": "spine2", "to": "leaf1", "reservedBandwidth": 100, "availableBandwidth": 50},
+                {"from": "spine2", "to": "leaf2", "reservedBandwidth": 100, "availableBandwidth": 50},
+                {"from": "leaf1", "to": "host1", "reservedBandwidth": 50, "availableBandwidth": 25},
+                {"from": "leaf2", "to": "host2", "reservedBandwidth": 50, "availableBandwidth": 25}
+            ]
+        };
+
+        var topology = JSON.parse(JSON.stringify(initialTopology));  // Create a mutable copy of initial topology
+
+        // Function to draw topology
+        function drawTopology() {
+            var data = [];
+
+            topology.nodes.forEach(function (node) {
+                var nodeStyle = node.type === "spine" ? 'spine-node' : node.type === "leaf" ? 'leaf-node' : 'host-node';
+                data.push({
+                    x: [node.x],
+                    y: [node.y],
+                    mode: 'markers+text',
+                    type: 'scatter',
+                    name: node.label,
+                    text: [node.label],
+                    textposition: 'top center',
+                    marker: {
+                        size: 15,
+                        symbol: 'circle',
+                        color: node.type === "spine" ? '#007bff' : node.type === "leaf" ? '#28a745' : '#f39c12',
+                    },
+                    hoverinfo: 'text',
+                    hoverlabel: {
+                        bgcolor: 'rgba(0, 0, 0, 0.7)',
+                        font: { color: '#fff' }
+                    },
+                    hovertemplate: '<b>%{text}</b><br>Type: %{marker.color}<br>Reserved Bandwidth: %{text}<extra></extra>'
+                });
+            });
+
+            topology.edges.forEach(function (edge) {
+                var edgeLine = {
+                    x: [topology.nodes.find(n => n.id === edge.from).x, topology.nodes.find(n => n.id === edge.to).x],
+                    y: [topology.nodes.find(n => n.id === edge.from).y, topology.nodes.find(n => n.id === edge.to).y],
+                    mode: 'lines',
+                    type: 'scatter',
+                    line: {
+                        color: '#888',
+                        width: 2,
+                        opacity: 0.7
+                    },
+                    hoverinfo: 'text',
+                    hoverlabel: {
+                        bgcolor: 'rgba(0, 0, 0, 0.7)',
+                        font: { color: '#fff' }
+                    },
+                    hovertemplate: 'Reserved Bandwidth: %{line.width} Mbps<br>Available Bandwidth: %{line.opacity} Mbps<extra></extra>'
+                };
+                data.push(edgeLine);
+            });
+
+            var layout = {
+                title: 'Network Topology',
+                showlegend: false,
+                xaxis: {
+                    showgrid: false,
+                    zeroline: false
+                },
+                yaxis: {
+                    showgrid: false,
+                    zeroline: false
+                },
+                hovermode: 'closest',
+                dragmode: 'pan',
+                margin: {
+                    l: 50,
+                    r: 50,
+                    t: 50,
+                    b: 50
+                },
+            };
+
+            Plotly.newPlot('plotly-div', data, layout);
+        }
+
+        // Reset Button Functionality
+        document.getElementById('resetButton').addEventListener('click', function() {
+            topology = JSON.parse(JSON.stringify(initialTopology));  // Reset topology to initial state
+            drawTopology();
+        });
+
+        // Edit Button Functionality
+        document.getElementById('editButton').addEventListener('click', function() {
+            let newSpine1X = prompt("Enter new X for Spine 1", topology.nodes[0].x);
+            let newSpine1Y = prompt("Enter new Y for Spine 1", topology.nodes[0].y);
+
+            if (newSpine1X && newSpine1Y) {
+                topology.nodes[0].x = parseFloat(newSpine1X);
+                topology.nodes[0].y = parseFloat(newSpine1Y);
+                drawTopology();
+            }
+        });
+
+        // Initial plot render
+        drawTopology();
+    </script>
+</body>
+
+</html>
