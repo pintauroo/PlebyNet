@@ -1,7 +1,10 @@
+# topology.py
+
 import networkx as nx
 import numpy as np
 import pandas as pd
 import logging
+import matplotlib.pyplot as plt
 
 # Suppress matplotlib logging
 logging.getLogger('matplotlib').setLevel(logging.ERROR)
@@ -73,7 +76,7 @@ class BaseTopology:
         record = {'allocation_step': time_instant, 'job_id': job_id}
 
         for node, data in self.G.nodes(data=True):
-            if data['type'] in ['spine', 'leaf', 'host']:
+            if data['type'] in ['spine', 'leaf', 'host', 'core', 'aggregation', 'edge']:
                 prefix = 'node'
                 element = node
                 record[f"{prefix}_{element}_total_bw"] = data['bandwidth']
@@ -127,7 +130,7 @@ class BaseTopology:
 
                     # Update node usage counts
                     for node in path:
-                        if self.G.nodes[node]['type'] in ['spine', 'leaf']:
+                        if self.G.nodes[node]['type'] in ['spine', 'leaf', 'core', 'aggregation', 'edge']:
                             node_usage_count[node] = node_usage_count.get(node, 0) + 1
 
                     # Update edge usage counts
@@ -169,7 +172,7 @@ class BaseTopology:
                 total_bw = allocated_per_connection_bw
 
                 for node in path:
-                    if self.G.nodes[node]['type'] in ['spine', 'leaf']:
+                    if self.G.nodes[node]['type'] in ['spine', 'leaf', 'core', 'aggregation', 'edge']:
                         new_reserved_bw = float(self.G.nodes[node]['reserved_bw']) + total_bw
                         if new_reserved_bw > float(self.G.nodes[node]['bandwidth']):
                             if not allow_oversubscription:
@@ -223,7 +226,7 @@ class BaseTopology:
                 total_bw = allocated_bw
 
                 for node in path:
-                    if self.G.nodes[node]['type'] in ['spine', 'leaf']:
+                    if self.G.nodes[node]['type'] in ['spine', 'leaf', 'core', 'aggregation', 'edge']:
                         old_reserved_bw = self.G.nodes[node]['reserved_bw']
                         new_reserved_bw = float(self.G.nodes[node]['reserved_bw']) - total_bw
                         self.G.nodes[node]['reserved_bw'] = max(round(new_reserved_bw, 6), 0.0)
@@ -254,12 +257,60 @@ class BaseTopology:
             return False
 
     def format_node_id(self, node_id):
-        return f"H{str(node_id)}"
+        return f"H{str(node_id)}" if not str(node_id).startswith('H') else node_id
 
     def format_node_ids(self, node_ids):
         if isinstance(node_ids, str):
             node_ids = [node_ids]
-        return [f"H{str(node_id)}" for node_id in node_ids]
+        return [self.format_node_id(node_id) for node_id in node_ids]
+
+    def draw_topology(self, title="Network Topology"):
+        """
+        Visualize the network topology.
+        """
+        # Assign positions to nodes using a layout algorithm
+        pos = nx.spring_layout(self.G, seed=42)  # Seed for reproducibility
+
+        # Define color mapping based on node types
+        color_map = {
+            'core': 'red',
+            'aggregation': 'orange',
+            'edge': 'yellow',
+            'leaf': 'blue',
+            'spine': 'purple',
+            'host': 'green'
+        }
+
+        # Prepare node colors and labels
+        node_colors = []
+        node_labels = {}
+        for node, data in self.G.nodes(data=True):
+            node_type = data.get('type', '')
+            color = color_map.get(node_type, 'grey')
+            node_colors.append(color)
+            node_labels[node] = node  # Or any other label you'd like
+
+        # Draw the nodes
+        nx.draw_networkx_nodes(self.G, pos, node_color=node_colors, node_size=300)
+
+        # Draw the edges
+        nx.draw_networkx_edges(self.G, pos)
+
+        # Draw labels
+        nx.draw_networkx_labels(self.G, pos, labels=node_labels, font_size=8)
+
+        # Create a legend for node types
+        import matplotlib.patches as mpatches
+        handles = [mpatches.Patch(color=color, label=label.capitalize()) for label, color in color_map.items()]
+        plt.legend(handles=handles, loc='best')
+
+        # Set plot title
+        plt.title(title)
+
+        # Display the plot
+        plt.axis('off')
+        plt.tight_layout()
+        plt.show()
 
 class SpineLeafTopology(BaseTopology):
     def __init__(self, num_spine, num_leaf, num_hosts_per_leaf, spine_bw, leaf_bw, link_bw_leaf_to_node, link_bw_leaf_to_spine):
@@ -316,49 +367,107 @@ class SpineLeafTopology(BaseTopology):
         # print("Network state verification passed. The network is back to its original state.")
         return True
 
+class FatTreeTopology(BaseTopology):
+    def __init__(self, k, bandwidth):
+        """
+        Initialize a Fat-Tree topology.
+
+        Args:
+            k (int): The parameter defining the Fat-Tree. The topology will have k pods.
+            bandwidth (float): The bandwidth for all links.
+        """
+        super().__init__()
+        self.k = k  # Number of ports per switch (must be even)
+        self.bandwidth = float(bandwidth)
+        self.G = self.create_topology()
+        self.original_reserved_bw_nodes = {node: data['reserved_bw'] for node, data in self.G.nodes(data=True)}
+        self.original_reserved_bw_edges = {(u, v): data['reserved_bw'] for u, v, data in self.G.edges(data=True)}
+        self.adj = self.calculate_host_to_host_adjacency_matrix()
+
+    def create_topology(self):
+        G = nx.Graph()
+        k = self.k
+        if k % 2 != 0:
+            raise ValueError("Parameter k must be even for Fat-Tree topology.")
+
+        num_pods = k
+        num_core_switches = (k // 2) ** 2
+        num_agg_switches_per_pod = k // 2
+        num_edge_switches_per_pod = k // 2
+        num_hosts_per_edge = k // 2
+
+        # Create core switches
+        core_switches = []
+        for i in range(num_core_switches):
+            node_id = f"C{i}"
+            G.add_node(node_id, type='core', bandwidth=self.bandwidth, reserved_bw=0.0)
+            core_switches.append(node_id)
+
+        # Create pods
+        for pod in range(num_pods):
+            agg_switches = []
+            edge_switches = []
+            # Create aggregation switches
+            for i in range(num_agg_switches_per_pod):
+                node_id = f"A{pod}_{i}"
+                G.add_node(node_id, type='aggregation', bandwidth=self.bandwidth, reserved_bw=0.0)
+                agg_switches.append(node_id)
+            # Create edge switches
+            for i in range(num_edge_switches_per_pod):
+                node_id = f"E{pod}_{i}"
+                G.add_node(node_id, type='edge', bandwidth=self.bandwidth, reserved_bw=0.0)
+                edge_switches.append(node_id)
+            # Connect aggregation switches to core switches
+            for i, agg in enumerate(agg_switches):
+                for j in range(k // 2):
+                    core_index = j + (i * (k // 2))
+                    if core_index >= len(core_switches):
+                        core_index = core_index % len(core_switches)
+                    core = core_switches[core_index]
+                    G.add_edge(agg, core, bandwidth=self.bandwidth, reserved_bw=0.0)
+            # Connect edge switches to aggregation switches
+            for edge in edge_switches:
+                for agg in agg_switches:
+                    G.add_edge(edge, agg, bandwidth=self.bandwidth, reserved_bw=0.0)
+            # Create hosts and connect to edge switches
+            for idx, edge in enumerate(edge_switches):
+                for i in range(num_hosts_per_edge):
+                    host_id = f"H{pod}_{idx}_{i}"
+                    G.add_node(host_id, type='host', bandwidth=self.bandwidth, reserved_bw=0.0)
+                    G.add_edge(edge, host_id, bandwidth=self.bandwidth, reserved_bw=0.0)
+        return G
+
+    def verify_network_state(self):
+        epsilon = 1e-6  # Tolerance level for floating-point comparison
+        # Check nodes
+        for node, data in self.G.nodes(data=True):
+            original_bw = self.original_reserved_bw_nodes.get(node, 0.0)
+            current_bw = data['reserved_bw']
+            if abs(original_bw - current_bw) > epsilon:
+                print(f"Node {node} reserved_bw mismatch. Original: {original_bw}, Current: {current_bw}")
+                return False
+
+        # Check edges
+        for u, v, data in self.G.edges(data=True):
+            edge = (u, v)
+            original_bw = self.original_reserved_bw_edges.get(edge, 0.0)
+            current_bw = data['reserved_bw']
+            if abs(original_bw - current_bw) > epsilon:
+                print(f"Edge {u}-{v} reserved_bw mismatch. Original: {original_bw}, Current: {current_bw}")
+                return False
+
+        # print("Network state verification passed. The network is back to its original state.")
+        return True
+
 # Example usage
 if __name__ == "__main__":
-    # Parameters based on user-specified configuration
-    num_spine_switches = 2
-    num_leaf_switches = 5
-    num_hosts_per_leaf = 10
+    # Test the FatTreeTopology
+    k = 4  # Must be even
+    bandwidth = 100
 
-    spine_bandwidth = 500  # max_spine_capacity
-    leaf_bandwidth = 500   # max_leaf_capacity
-    link_bw_leaf_to_node = 100  # max_node_bw
-    link_bw_leaf_to_spine = 100  # max_leaf_to_spine_bw
+    topology = FatTreeTopology(k=k, bandwidth=bandwidth)
 
-    topology = SpineLeafTopology(
-        num_spine_switches, num_leaf_switches, num_hosts_per_leaf,
-        spine_bandwidth, leaf_bandwidth, link_bw_leaf_to_node, link_bw_leaf_to_spine
-    )
+    # Visualize the topology
+    topology.draw_topology(title="Fat-Tree Topology Visualization")
 
-    # First test case
-    allocation_list = [i for i in range(1, 11)]  # Workers 0-9 assigned to PS nodes 1-10
-    total_bw = 100  # Total bandwidth required
-    job_id = 1
-
-    # Define time instants
-    time_instant_allocation = 0
-    time_instant_deallocation = 1
-
-    print("Adjacency Matrix Before Allocation:")
-    print(topology.adj)
-
-    # Allocate resources for the job
-    allocated_per_conn = topology.allocate_bandwidth_between_workers_and_ps(
-        allocation_list, total_bw, job_id, time_instant=time_instant_allocation, allow_oversubscription=False
-    )
-    print(f"Allocation success for job {job_id}: {allocated_per_conn > 0}")
-    print(f"Allocated bandwidth per connection for job {job_id}: {allocated_per_conn}")
-
-    print("Adjacency Matrix After Allocation:")
-    print(topology.adj)
-
-    # Deallocate resources for the job
-    deallocation_success = topology.deallocate_bandwidth_between_workers_and_ps(job_id, time_instant_deallocation)
-    print(f"Deallocation success for job {job_id}: {deallocation_success}")
-
-    # Verify that the network is back to its original state
-    network_state_ok = topology.verify_network_state()
-    print(f"Network state is back to original: {network_state_ok}")
+    # Further testing or demonstration code
