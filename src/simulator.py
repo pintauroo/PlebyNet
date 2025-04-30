@@ -431,33 +431,36 @@ class Simulator_Plebiscito:
                 for index, rj in running_jobs.iterrows():
                     job_id = rj['job_id']
                     speedup_info = job_speedup[job_id]
-                    if self.with_bw:
-                        if self.singleps:
-                            running_jobs.at[index, 'current_duration'] += speedup_info['alloc_bw'] / speedup_info['read_count']
+                    # if self.with_bw:
+
+
+                    # NEW CHANGE
+                    if self.singleps:
+                        running_jobs.at[index, 'current_duration'] += speedup_info['alloc_bw'] / speedup_info['read_count']
+                    else:
+                        if len(set(rj['final_node_allocation'])) > 1:
+                            # print(f"Timeinstant: {time_instant:<10} | Job ID: {job_id:<10} | Duration: {int(running_jobs.at[index, 'current_duration']):<5} /  {int(running_jobs.at[index, 'duration']):<5} | "
+                            #     f"Allocated Bandwidth: {speedup_info['alloc_bw']:<10} | Unique Nodes: {len(set(rj['final_node_allocation'])):<5} | "
+                            #     f"Read Count: {speedup_info['read_count']:<5}")
+
+                            running_jobs.at[index, 'current_duration'] += (speedup_info['alloc_bw'] * len(set(rj['final_node_allocation']))) / speedup_info['read_count']
                         else:
-                            if len(set(rj['final_node_allocation'])) > 1:
-                                # print(f"Timeinstant: {time_instant:<10} | Job ID: {job_id:<10} | Duration: {int(running_jobs.at[index, 'current_duration']):<5} /  {int(running_jobs.at[index, 'duration']):<5} | "
-                                #     f"Allocated Bandwidth: {speedup_info['alloc_bw']:<10} | Unique Nodes: {len(set(rj['final_node_allocation'])):<5} | "
-                                #     f"Read Count: {speedup_info['read_count']:<5}")
+                            running_jobs.at[index, 'current_duration'] += 1
+                    # if rj['current_duration'] > rj['duration'] * 3:
+                    # if time_instant - (rj['exec_time'] -rj['submit_time']) > rj['duration'] * 10:
+                    if time_instant - rj['exec_time'] > rj['duration'] * rj['num_pod']:
+                        logger.info(f"Terminated long job: {job_id}")
 
-                                running_jobs.at[index, 'current_duration'] += (speedup_info['alloc_bw'] * len(set(rj['final_node_allocation']))) / speedup_info['read_count']
-                            else:
-                                running_jobs.at[index, 'current_duration'] += 1
-                        # if rj['current_duration'] > rj['duration'] * 3:
-                        # if time_instant - (rj['exec_time'] -rj['submit_time']) > rj['duration'] * 10:
-                        if time_instant - rj['exec_time'] > rj['duration'] * rj['num_pod']:
-                            logger.info(f"Terminated long job: {job_id}")
-
-                            stopped_j, running_jobs = job.stop_job(running_jobs, time_instant, job_id)
-                            jobs_report = pd.concat([jobs_report, stopped_j])
-                            self.deallocate_jobs(progress_bid_events, queues, stopped_j, time_instant)
-                            completed_jobs += 1
-                            utils.verify_tot_res(self.filename, self.nodes, running_jobs, self.tot_nodes_cpu, self.tot_nodes_gpu)
+                        stopped_j, running_jobs = job.stop_job(running_jobs, time_instant, job_id)
+                        jobs_report = pd.concat([jobs_report, stopped_j])
+                        self.deallocate_jobs(progress_bid_events, queues, stopped_j, time_instant)
+                        completed_jobs += 1
+                        utils.verify_tot_res(self.filename, self.nodes, running_jobs, self.tot_nodes_cpu, self.tot_nodes_gpu)
                         # else:
                         #     print(time_instant - rj['exec_time'], rj['duration'])
 
-                    else:
-                        running_jobs.at[index, 'current_duration'] += 1
+                    # else:
+                    #     running_jobs.at[index, 'current_duration'] += 1
 
 
 
@@ -698,21 +701,49 @@ class Simulator_Plebiscito:
                                         # print(f"Total allocated bandwidth for job {job_id}: {total_allocated}")
 
                                     
+                                    # NEW CHANGE
 
                                     # Logic to try allocation with lower bw
                                     if allocated_bw > 0:
+                                        logger.debug(f"[SIM]allocated_bw: {allocated_bw}")
+                                        
+                                        if self.with_bw:
+                                            if allocated_bw >= job_speedup[job_id]['read_count']/nmpds or allocated_bw >=  job_speedup[job_id]['alloc_bw']/nmpds:
 
-                                        job_speedup[job_id]['alloc_bw'] = allocated_bw
-                                        logger.debug(f"[SIM] [ALLOCATED BW] Job: {job_id}, {allocations}, BW:{job_speedup[job_id]['read_count']}/{job_speedup[job_id]['alloc_bw']}")
+                                                job_speedup[job_id]['alloc_bw'] = allocated_bw
+                                                logger.debug(f"[SIM] [ALLOCATED with BW] Job: {job_id}, {allocations}, BW:{job_speedup[job_id]['read_count']}/{job_speedup[job_id]['alloc_bw']} allocated_bw: {allocated_bw}")
 
-                                        self.topology.save_stats_to_csv(self.filename+'_topo')
-                                        savemetrics(final_allocations, all_jobs_ids, job_id, nmpds, num_gpu,
-                                                    tot_assigned_jobs, tot_allocated_gpu, tot_allocated_cpu, subset)
+                                                self.topology.save_stats_to_csv(self.filename+'_topo')
+                                                savemetrics(final_allocations, all_jobs_ids, job_id, nmpds, num_gpu,
+                                                            tot_assigned_jobs, tot_allocated_gpu, tot_allocated_cpu, subset)
 
-                                        if job_id in unassigned_ids:
-                                            unassigned_ids.remove(job_id)
-                                        if job_id in all_jobs_ids:
-                                            logger.info('[ERR] Bandwidth', job_id)
+                                                if job_id in unassigned_ids:
+                                                    unassigned_ids.remove(job_id)
+                                                if job_id in all_jobs_ids:
+                                                    logger.info('[ERR] Bandwidth', job_id)
+                                            else:
+                                                logger.debug(f"[SIM] [INSUFFICIENT with BW] Job: {job_id}, {allocations}, BW:{job_speedup[job_id]['read_count']}/{job_speedup[job_id]['alloc_bw']} allocated_bw: {allocated_bw}")
+                                                # self.topology.get_utilization_percentage()
+
+                                                allctd = False
+                                                assigned_jobs = assigned_jobs.iloc[:-len(a_jobs)]
+                                                unassigned_ids, unassigned_jobs, processed_jobs = u_job_handler(
+                                                    final_allocations, job_id, unassigned_ids, unassigned_jobs, a_jobs,
+                                                    all_jobs_ids, processed_jobs, tot_allocated_gpu, tot_allocated_cpu,
+                                                    discard_job=False)
+                                        else:
+                                            job_speedup[job_id]['alloc_bw'] = allocated_bw
+                                            logger.debug(f"[SIM] [ALLOCATED NOBW] Job: {job_id}, {allocations}, BW:{job_speedup[job_id]['read_count']}/{job_speedup[job_id]['alloc_bw']}")
+
+                                            self.topology.save_stats_to_csv(self.filename+'_topo')
+                                            savemetrics(final_allocations, all_jobs_ids, job_id, nmpds, num_gpu,
+                                                        tot_assigned_jobs, tot_allocated_gpu, tot_allocated_cpu, subset)
+
+                                            if job_id in unassigned_ids:
+                                                unassigned_ids.remove(job_id)
+                                            if job_id in all_jobs_ids:
+                                                logger.info('[ERR] Bandwidth', job_id)
+
 
                                         # plttng = True
                                         # plttng = False

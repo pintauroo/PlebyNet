@@ -4,7 +4,7 @@
 TOTAL=10
 
 # Maximum number of concurrent processes
-CONCURRENT=5
+CONCURRENT=2
 
 # Starting index (adjust as needed)
 START_INDEX=300
